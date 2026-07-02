@@ -25,7 +25,7 @@ public class ManagerService {
         validateManager(authenticatedEmployee);
 
         return vacationRepository
-                .findByEmployeeManagerIdOrderByStartDateAsc(
+                .findByEmployeeManagerIdAndArchivedFalseOrderByStartDateAsc(
                         authenticatedEmployee.getId()
                 )
                 .stream()
@@ -45,6 +45,7 @@ public class ManagerService {
                 authenticatedEmployee.getId()
         );
 
+        validateNotArchived(vacation);
         validatePendingStatus(vacation);
 
         vacation.setApprovalStatus(
@@ -69,6 +70,7 @@ public class ManagerService {
                 authenticatedEmployee.getId()
         );
 
+        validateNotArchived(vacation);
         validatePendingStatus(vacation);
 
         vacation.setApprovalStatus(
@@ -127,6 +129,17 @@ public class ManagerService {
             throw new ResponseStatusException(
                     HttpStatus.CONFLICT,
                     "Esta solicitação já foi analisada"
+            );
+        }
+    }
+
+    private void validateNotArchived(
+            Vacation vacation
+    ) {
+        if (vacation.isArchived()) {
+            throw new ResponseStatusException(
+                    HttpStatus.CONFLICT,
+                    "Esta solicitação está arquivada"
             );
         }
     }
