@@ -1,5 +1,7 @@
 package com.JoaoGabriel.vacation_scheduler.vacation.dto;
 
+import com.JoaoGabriel.vacation_scheduler.vacation.VacationApprovalStatus;
+
 import java.time.LocalDate;
 
 public record VacationResponse(
@@ -8,6 +10,8 @@ public record VacationResponse(
         LocalDate endDate,
         Integer totalDays,
         Long employeeId,
-        String employeeName
+        String employeeName,
+        VacationApprovalStatus approvalStatus
+
 ) {
 }

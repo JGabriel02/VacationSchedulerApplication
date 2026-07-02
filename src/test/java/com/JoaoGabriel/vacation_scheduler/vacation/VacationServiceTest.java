@@ -7,6 +7,7 @@ import com.JoaoGabriel.vacation_scheduler.vacation.exception.InvalidVacationExce
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
@@ -14,13 +15,9 @@ import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
 class VacationServiceTest {
@@ -32,434 +29,337 @@ class VacationServiceTest {
 
     private Employee employee;
 
+    private LocalDate today;
+    private LocalDate firstPeriodStart;
+    private LocalDate secondPeriodStart;
+
     @BeforeEach
     void setUp() {
-        vacationService = new VacationService(vacationRepository);
+        vacationService =
+                new VacationService(vacationRepository);
 
-        employee = new Employee();
-        employee.setId(1L);
-        employee.setNome("Lucas Ferreira");
-        employee.setEmail("lucas.ferreira@email.com");
+        today = LocalDate.now();
 
         /*
-         * Essa data faz com que o funcionário:
-         *
-         * - já tenha completado mais de um ano;
-         * - esteja em um ciclo atualmente ativo;
-         * - ainda tenha vários meses antes do fim do ciclo.
+         * Como a admissão ocorreu há dois anos,
+         * o funcionário já está elegível para férias.
          */
+        employee = new Employee();
+        employee.setId(1L);
+        employee.setNome("João");
         employee.setAdmissionDate(
-                LocalDate.now()
-                        .minusYears(2)
-                        .minusMonths(3)
+                today.minusYears(2)
         );
+
+        /*
+         * Datas futuras e dentro do ciclo atual.
+         */
+        firstPeriodStart =
+                today.plusMonths(2);
+
+        secondPeriodStart =
+                today.plusMonths(5);
     }
 
     @Test
-    void shouldRejectVacationWithPastStartDate() {
-        VacationRequest request = new VacationRequest(
-                LocalDate.now().minusDays(1),
-                LocalDate.now().plusDays(8)
-        );
+    void shouldCreateThirtyDayVacationSuccessfully() {
+        VacationRequest request =
+                requestWithDays(
+                        firstPeriodStart,
+                        30
+                );
 
-        InvalidVacationException exception = assertThrows(
-                InvalidVacationException.class,
-                () -> vacationService.create(request, employee)
-        );
+        when(
+                vacationRepository
+                        .findByEmployeeIdOrderByStartDateAsc(
+                                employee.getId()
+                        )
+        ).thenReturn(List.of());
 
-        assertEquals(
-                "A data de início das férias deve ser futura",
-                exception.getMessage()
-        );
-
-        verify(vacationRepository, never()).save(any());
-    }
-
-    @Test
-    void shouldRejectVacationStartingToday() {
-        VacationRequest request = new VacationRequest(
-                LocalDate.now(),
-                LocalDate.now().plusDays(9)
-        );
-
-        InvalidVacationException exception = assertThrows(
-                InvalidVacationException.class,
-                () -> vacationService.create(request, employee)
-        );
-
-        assertEquals(
-                "A data de início das férias deve ser futura",
-                exception.getMessage()
-        );
-
-        verify(vacationRepository, never()).save(any());
-    }
-
-    @Test
-    void shouldRejectEndDateBeforeStartDate() {
-        LocalDate startDate = LocalDate.now().plusDays(10);
-
-        VacationRequest request = new VacationRequest(
-                startDate,
-                startDate.minusDays(1)
-        );
-
-        InvalidVacationException exception = assertThrows(
-                InvalidVacationException.class,
-                () -> vacationService.create(request, employee)
-        );
-
-        assertEquals(
-                "A data final não pode ser anterior à data inicial",
-                exception.getMessage()
-        );
-
-        verify(vacationRepository, never()).save(any());
-    }
-
-    @Test
-    void shouldRejectVacationBeforeFirstEligibilityDate() {
-        Employee recentlyHiredEmployee = new Employee();
-        recentlyHiredEmployee.setId(2L);
-        recentlyHiredEmployee.setNome("Funcionário Novo");
-        recentlyHiredEmployee.setEmail("novo@email.com");
-        recentlyHiredEmployee.setAdmissionDate(
-                LocalDate.now().minusMonths(6)
-        );
-
-        LocalDate startDate = LocalDate.now().plusDays(10);
-
-        VacationRequest request = new VacationRequest(
-                startDate,
-                startDate.plusDays(9)
-        );
-
-        LocalDate eligibilityDate =
-                recentlyHiredEmployee
-                        .getAdmissionDate()
-                        .plusYears(1);
-
-        InvalidVacationException exception = assertThrows(
-                InvalidVacationException.class,
-                () -> vacationService.create(
-                        request,
-                        recentlyHiredEmployee
+        when(
+                vacationRepository.save(
+                        any(Vacation.class)
                 )
+        ).thenAnswer(invocation -> {
+            Vacation vacation =
+                    invocation.getArgument(0);
+
+            vacation.setId(10L);
+
+            return vacation;
+        });
+
+        VacationResponse response =
+                vacationService.create(
+                        request,
+                        employee
+                );
+
+        assertNotNull(response);
+        assertEquals(10L, response.id());
+        assertEquals(
+                request.startDate(),
+                response.startDate()
         );
+        assertEquals(
+                request.endDate(),
+                response.endDate()
+        );
+        assertEquals(30, response.totalDays());
+        assertEquals(
+                employee.getId(),
+                response.employeeId()
+        );
+        assertEquals(
+                employee.getNome(),
+                response.employeeName()
+        );
+        assertEquals(
+                VacationApprovalStatus.PENDING,
+                response.approvalStatus()
+        );
+
+        ArgumentCaptor<Vacation> captor =
+                ArgumentCaptor.forClass(
+                        Vacation.class
+                );
+
+        verify(vacationRepository)
+                .save(captor.capture());
+
+        Vacation savedVacation =
+                captor.getValue();
 
         assertEquals(
-                "As férias só podem começar a partir de "
-                        + eligibilityDate,
-                exception.getMessage()
+                VacationApprovalStatus.PENDING,
+                savedVacation.getApprovalStatus()
         );
-
-        verify(vacationRepository, never()).save(any());
+        assertEquals(
+                employee,
+                savedVacation.getEmployee()
+        );
     }
 
     @Test
-    void shouldRejectVacationFromCycleThatHasNotStartedYet() {
-        LocalDate currentCycleStart = getCurrentCycleStart();
-        LocalDate nextCycleStart =
-                currentCycleStart.plusYears(1);
+    void shouldCreateTenDayVacationSuccessfully() {
+        VacationRequest request =
+                requestWithDays(
+                        firstPeriodStart,
+                        10
+                );
 
-        VacationRequest request = new VacationRequest(
-                nextCycleStart.plusDays(10),
-                nextCycleStart.plusDays(19)
-        );
+        when(
+                vacationRepository
+                        .findByEmployeeIdOrderByStartDateAsc(
+                                employee.getId()
+                        )
+        ).thenReturn(List.of());
 
-        InvalidVacationException exception = assertThrows(
-                InvalidVacationException.class,
-                () -> vacationService.create(request, employee)
-        );
+        configureSuccessfulSave();
 
-        assertEquals(
-                "Este ciclo de férias só estará disponível a partir de "
-                        + nextCycleStart,
-                exception.getMessage()
-        );
+        VacationResponse response =
+                vacationService.create(
+                        request,
+                        employee
+                );
 
-        verify(vacationRepository, never()).save(any());
-    }
-
-    @Test
-    void shouldRejectVacationThatCrossesAcquisitionCycle() {
-        LocalDate cycleEnd = getCurrentCycleEnd();
-
-        VacationRequest request = new VacationRequest(
-                cycleEnd.minusDays(4),
-                cycleEnd.plusDays(5)
-        );
-
-        InvalidVacationException exception = assertThrows(
-                InvalidVacationException.class,
-                () -> vacationService.create(request, employee)
-        );
+        assertEquals(10, response.totalDays());
 
         assertEquals(
-                "O período de férias deve terminar até "
-                        + cycleEnd,
-                exception.getMessage()
+                VacationApprovalStatus.PENDING,
+                response.approvalStatus()
         );
-
-        verify(vacationRepository, never()).save(any());
     }
 
     @Test
     void shouldRejectVacationWithInvalidNumberOfDays() {
-        LocalDate startDate = LocalDate.now().plusDays(10);
+        VacationRequest request =
+                requestWithDays(
+                        firstPeriodStart,
+                        15
+                );
 
-        VacationRequest request = new VacationRequest(
-                startDate,
-                startDate.plusDays(4)
-        );
-
-        InvalidVacationException exception = assertThrows(
-                InvalidVacationException.class,
-                () -> vacationService.create(request, employee)
-        );
+        InvalidVacationException exception =
+                assertThrows(
+                        InvalidVacationException.class,
+                        () -> vacationService.create(
+                                request,
+                                employee
+                        )
+                );
 
         assertEquals(
                 "O período deve ter 10, 20 ou 30 dias",
                 exception.getMessage()
         );
 
-        verify(vacationRepository, never()).save(any());
+        verify(
+                vacationRepository,
+                never()
+        ).save(any());
     }
 
     @Test
-    void shouldRejectOverlappingVacation() {
-        LocalDate startDate = LocalDate.now().plusDays(10);
+    void shouldRejectVacationStartingToday() {
+        VacationRequest request =
+                requestWithDays(
+                        today,
+                        10
+                );
 
-        VacationRequest request = new VacationRequest(
-                startDate,
-                startDate.plusDays(9)
-        );
-
-        when(
-                vacationRepository
-                        .existsByStartDateLessThanEqualAndEndDateGreaterThanEqual(
-                                request.endDate(),
-                                request.startDate()
+        InvalidVacationException exception =
+                assertThrows(
+                        InvalidVacationException.class,
+                        () -> vacationService.create(
+                                request,
+                                employee
                         )
-        ).thenReturn(true);
-
-        InvalidVacationException exception = assertThrows(
-                InvalidVacationException.class,
-                () -> vacationService.create(request, employee)
-        );
+                );
 
         assertEquals(
-                "O período escolhido já está ocupado",
+                "A data de início das férias deve ser futura",
                 exception.getMessage()
         );
 
-        verify(vacationRepository, never()).save(any());
+        verifyNoInteractions(vacationRepository);
     }
 
     @Test
-    void shouldRejectVacationWhenEmployeeExceedsThirtyDays() {
-        LocalDate startDate = LocalDate.now().plusDays(10);
+    void shouldRejectVacationStartingInThePast() {
+        VacationRequest request =
+                requestWithDays(
+                        today.minusDays(1),
+                        10
+                );
 
-        VacationRequest request = new VacationRequest(
-                startDate,
-                startDate.plusDays(19)
-        );
-
-        Vacation existingVacation = createVacation(
-                1L,
-                LocalDate.now().plusDays(40),
-                20
-        );
-
-        when(
-                vacationRepository
-                        .findByEmployeeIdAndStartDateBetween(
-                                employee.getId(),
-                                getCurrentCycleStart(),
-                                getCurrentCycleEnd()
+        InvalidVacationException exception =
+                assertThrows(
+                        InvalidVacationException.class,
+                        () -> vacationService.create(
+                                request,
+                                employee
                         )
-        ).thenReturn(List.of(existingVacation));
-
-        InvalidVacationException exception = assertThrows(
-                InvalidVacationException.class,
-                () -> vacationService.create(request, employee)
-        );
+                );
 
         assertEquals(
-                "O funcionário não pode ultrapassar 30 dias de férias",
+                "A data de início das férias deve ser futura",
                 exception.getMessage()
         );
-
-        verify(vacationRepository, never()).save(any());
     }
 
     @Test
-    void shouldRejectTenPlusTenDivision() {
-        LocalDate startDate = LocalDate.now().plusDays(10);
+    void shouldRejectEndDateBeforeStartDate() {
+        VacationRequest request =
+                new VacationRequest(
+                        firstPeriodStart,
+                        firstPeriodStart.minusDays(1)
+                );
 
-        VacationRequest request = new VacationRequest(
-                startDate,
-                startDate.plusDays(9)
-        );
-
-        Vacation existingVacation = createVacation(
-                1L,
-                LocalDate.now().plusDays(40),
-                10
-        );
-
-        when(
-                vacationRepository
-                        .findByEmployeeIdAndStartDateBetween(
-                                employee.getId(),
-                                getCurrentCycleStart(),
-                                getCurrentCycleEnd()
+        InvalidVacationException exception =
+                assertThrows(
+                        InvalidVacationException.class,
+                        () -> vacationService.create(
+                                request,
+                                employee
                         )
-        ).thenReturn(List.of(existingVacation));
-
-        InvalidVacationException exception = assertThrows(
-                InvalidVacationException.class,
-                () -> vacationService.create(request, employee)
-        );
+                );
 
         assertEquals(
-                "As férias devem ser tiradas em 30 dias ou divididas em 20 e 10 dias",
+                "A data final não pode ser anterior à data inicial",
                 exception.getMessage()
         );
-
-        verify(vacationRepository, never()).save(any());
     }
 
     @Test
-    void shouldCreateThirtyDayVacationSuccessfully() {
-        LocalDate startDate = LocalDate.now().plusDays(10);
-
-        VacationRequest request = new VacationRequest(
-                startDate,
-                startDate.plusDays(29)
+    void shouldRejectEmployeeWithoutOneYearOfAdmission() {
+        employee.setAdmissionDate(
+                today.minusMonths(6)
         );
 
-        when(
-                vacationRepository
-                        .findByEmployeeIdAndStartDateBetween(
-                                employee.getId(),
-                                getCurrentCycleStart(),
-                                getCurrentCycleEnd()
+        VacationRequest request =
+                requestWithDays(
+                        firstPeriodStart,
+                        10
+                );
+
+        InvalidVacationException exception =
+                assertThrows(
+                        InvalidVacationException.class,
+                        () -> vacationService.create(
+                                request,
+                                employee
                         )
-        ).thenReturn(List.of());
+                );
 
-        when(vacationRepository.save(any(Vacation.class)))
-                .thenAnswer(invocation -> {
-                    Vacation vacation = invocation.getArgument(0);
-                    vacation.setId(100L);
-                    return vacation;
-                });
-
-        VacationResponse response =
-                vacationService.create(request, employee);
-
-        assertEquals(100L, response.id());
-        assertEquals(startDate, response.startDate());
-        assertEquals(startDate.plusDays(29), response.endDate());
-        assertEquals(30, response.totalDays());
-        assertEquals(employee.getId(), response.employeeId());
-        assertEquals(employee.getNome(), response.employeeName());
-
-        verify(vacationRepository).save(any(Vacation.class));
+        assertTrue(
+                exception.getMessage().startsWith(
+                        "As férias só podem começar a partir de"
+                )
+        );
     }
 
     @Test
-    void shouldAllowTwentyDaysAfterTenDays() {
-        LocalDate startDate = LocalDate.now().plusDays(10);
+    void shouldRejectNullEmployee() {
+        VacationRequest request =
+                requestWithDays(
+                        firstPeriodStart,
+                        10
+                );
 
-        VacationRequest request = new VacationRequest(
-                startDate,
-                startDate.plusDays(19)
-        );
-
-        Vacation existingVacation = createVacation(
-                1L,
-                LocalDate.now().plusDays(40),
-                10
-        );
-
-        when(
-                vacationRepository
-                        .findByEmployeeIdAndStartDateBetween(
-                                employee.getId(),
-                                getCurrentCycleStart(),
-                                getCurrentCycleEnd()
+        InvalidVacationException exception =
+                assertThrows(
+                        InvalidVacationException.class,
+                        () -> vacationService.create(
+                                request,
+                                null
                         )
-        ).thenReturn(List.of(existingVacation));
+                );
 
-        when(vacationRepository.save(any(Vacation.class)))
-                .thenAnswer(invocation -> {
-                    Vacation vacation = invocation.getArgument(0);
-                    vacation.setId(101L);
-                    return vacation;
-                });
-
-        VacationResponse response =
-                vacationService.create(request, employee);
-
-        assertEquals(20, response.totalDays());
-        assertEquals(employee.getId(), response.employeeId());
-
-        verify(vacationRepository).save(any(Vacation.class));
+        assertEquals(
+                "Funcionário autenticado não encontrado",
+                exception.getMessage()
+        );
     }
 
     @Test
-    void shouldAllowTenDaysAfterTwentyDays() {
-        LocalDate startDate = LocalDate.now().plusDays(10);
+    void shouldRejectEmployeeWithoutAdmissionDate() {
+        employee.setAdmissionDate(null);
 
-        VacationRequest request = new VacationRequest(
-                startDate,
-                startDate.plusDays(9)
-        );
+        VacationRequest request =
+                requestWithDays(
+                        firstPeriodStart,
+                        10
+                );
 
-        Vacation existingVacation = createVacation(
-                1L,
-                LocalDate.now().plusDays(40),
-                20
-        );
-
-        when(
-                vacationRepository
-                        .findByEmployeeIdAndStartDateBetween(
-                                employee.getId(),
-                                getCurrentCycleStart(),
-                                getCurrentCycleEnd()
+        InvalidVacationException exception =
+                assertThrows(
+                        InvalidVacationException.class,
+                        () -> vacationService.create(
+                                request,
+                                employee
                         )
-        ).thenReturn(List.of(existingVacation));
+                );
 
-        when(vacationRepository.save(any(Vacation.class)))
-                .thenAnswer(invocation -> {
-                    Vacation vacation = invocation.getArgument(0);
-                    vacation.setId(102L);
-                    return vacation;
-                });
-
-        VacationResponse response =
-                vacationService.create(request, employee);
-
-        assertEquals(10, response.totalDays());
-
-        verify(vacationRepository).save(any(Vacation.class));
+        assertEquals(
+                "A data de admissão do funcionário não foi informada",
+                exception.getMessage()
+        );
     }
 
     @Test
-    void shouldListEmployeeVacations() {
-        Vacation firstVacation = createVacation(
-                1L,
-                LocalDate.now().plusMonths(1),
-                10
-        );
+    void shouldRejectOverlappingApprovedVacation() {
+        Vacation existingVacation =
+                createVacation(
+                        firstPeriodStart,
+                        10,
+                        VacationApprovalStatus.APPROVED
+                );
 
-        Vacation secondVacation = createVacation(
-                2L,
-                LocalDate.now().plusMonths(3),
-                20
-        );
+        VacationRequest request =
+                requestWithDays(
+                        firstPeriodStart.plusDays(5),
+                        10
+                );
 
         when(
                 vacationRepository
@@ -467,30 +367,413 @@ class VacationServiceTest {
                                 employee.getId()
                         )
         ).thenReturn(
-                List.of(firstVacation, secondVacation)
+                List.of(existingVacation)
         );
 
-        List<VacationResponse> responses =
-                vacationService.findByEmployee(employee);
+        InvalidVacationException exception =
+                assertThrows(
+                        InvalidVacationException.class,
+                        () -> vacationService.create(
+                                request,
+                                employee
+                        )
+                );
 
-        assertEquals(2, responses.size());
-        assertEquals(1L, responses.get(0).id());
-        assertEquals(2L, responses.get(1).id());
+        assertEquals(
+                "Você já possui uma solicitação de férias neste período",
+                exception.getMessage()
+        );
+
+        verify(
+                vacationRepository,
+                never()
+        ).save(any());
     }
 
     @Test
-    void shouldDeleteFutureVacationOwnedByEmployee() {
-        Vacation vacation = createVacation(
-                1L,
-                LocalDate.now().plusDays(20),
-                10
-        );
+    void shouldRejectOverlappingPendingVacation() {
+        Vacation existingVacation =
+                createVacation(
+                        firstPeriodStart,
+                        10,
+                        VacationApprovalStatus.PENDING
+                );
+
+        VacationRequest request =
+                requestWithDays(
+                        firstPeriodStart.plusDays(3),
+                        10
+                );
 
         when(
-                vacationRepository.findByIdAndEmployeeId(
-                        vacation.getId(),
-                        employee.getId()
+                vacationRepository
+                        .findByEmployeeIdOrderByStartDateAsc(
+                                employee.getId()
+                        )
+        ).thenReturn(
+                List.of(existingVacation)
+        );
+
+        assertThrows(
+                InvalidVacationException.class,
+                () -> vacationService.create(
+                        request,
+                        employee
                 )
+        );
+
+        verify(
+                vacationRepository,
+                never()
+        ).save(any());
+    }
+
+    @Test
+    void shouldIgnoreRejectedVacationWhenCheckingOverlap() {
+        Vacation rejectedVacation =
+                createVacation(
+                        firstPeriodStart,
+                        10,
+                        VacationApprovalStatus.REJECTED
+                );
+
+        VacationRequest request =
+                requestWithDays(
+                        firstPeriodStart,
+                        10
+                );
+
+        when(
+                vacationRepository
+                        .findByEmployeeIdOrderByStartDateAsc(
+                                employee.getId()
+                        )
+        ).thenReturn(
+                List.of(rejectedVacation)
+        );
+
+        configureSuccessfulSave();
+
+        VacationResponse response =
+                vacationService.create(
+                        request,
+                        employee
+                );
+
+        assertNotNull(response);
+
+        assertEquals(
+                VacationApprovalStatus.PENDING,
+                response.approvalStatus()
+        );
+    }
+
+    @Test
+    void shouldRejectVacationWhenEmployeeExceedsThirtyDays() {
+        Vacation existingVacation =
+                createVacation(
+                        firstPeriodStart,
+                        20,
+                        VacationApprovalStatus.APPROVED
+                );
+
+        VacationRequest request =
+                requestWithDays(
+                        secondPeriodStart,
+                        20
+                );
+
+        when(
+                vacationRepository
+                        .findByEmployeeIdOrderByStartDateAsc(
+                                employee.getId()
+                        )
+        ).thenReturn(
+                List.of(existingVacation)
+        );
+
+        InvalidVacationException exception =
+                assertThrows(
+                        InvalidVacationException.class,
+                        () -> vacationService.create(
+                                request,
+                                employee
+                        )
+                );
+
+        assertEquals(
+                "O funcionário não pode ultrapassar 30 dias de férias no mesmo ciclo",
+                exception.getMessage()
+        );
+
+        verify(
+                vacationRepository,
+                never()
+        ).save(any());
+    }
+
+    @Test
+    void shouldCountPendingVacationInThirtyDayLimit() {
+        Vacation pendingVacation =
+                createVacation(
+                        firstPeriodStart,
+                        20,
+                        VacationApprovalStatus.PENDING
+                );
+
+        VacationRequest request =
+                requestWithDays(
+                        secondPeriodStart,
+                        20
+                );
+
+        when(
+                vacationRepository
+                        .findByEmployeeIdOrderByStartDateAsc(
+                                employee.getId()
+                        )
+        ).thenReturn(
+                List.of(pendingVacation)
+        );
+
+        assertThrows(
+                InvalidVacationException.class,
+                () -> vacationService.create(
+                        request,
+                        employee
+                )
+        );
+    }
+
+    @Test
+    void shouldIgnoreRejectedVacationInThirtyDayLimit() {
+        Vacation rejectedVacation =
+                createVacation(
+                        firstPeriodStart,
+                        30,
+                        VacationApprovalStatus.REJECTED
+                );
+
+        VacationRequest request =
+                requestWithDays(
+                        secondPeriodStart,
+                        30
+                );
+
+        when(
+                vacationRepository
+                        .findByEmployeeIdOrderByStartDateAsc(
+                                employee.getId()
+                        )
+        ).thenReturn(
+                List.of(rejectedVacation)
+        );
+
+        configureSuccessfulSave();
+
+        VacationResponse response =
+                vacationService.create(
+                        request,
+                        employee
+                );
+
+        assertEquals(30, response.totalDays());
+    }
+
+    @Test
+    void shouldRejectTenPlusTenDivision() {
+        Vacation existingVacation =
+                createVacation(
+                        firstPeriodStart,
+                        10,
+                        VacationApprovalStatus.APPROVED
+                );
+
+        VacationRequest request =
+                requestWithDays(
+                        secondPeriodStart,
+                        10
+                );
+
+        when(
+                vacationRepository
+                        .findByEmployeeIdOrderByStartDateAsc(
+                                employee.getId()
+                        )
+        ).thenReturn(
+                List.of(existingVacation)
+        );
+
+        InvalidVacationException exception =
+                assertThrows(
+                        InvalidVacationException.class,
+                        () -> vacationService.create(
+                                request,
+                                employee
+                        )
+                );
+
+        assertEquals(
+                "As férias devem ser tiradas em 30 dias ou divididas em 20 e 10 dias",
+                exception.getMessage()
+        );
+
+        verify(
+                vacationRepository,
+                never()
+        ).save(any());
+    }
+
+    @Test
+    void shouldAllowTwentyDaysAfterTenDays() {
+        Vacation existingVacation =
+                createVacation(
+                        firstPeriodStart,
+                        10,
+                        VacationApprovalStatus.APPROVED
+                );
+
+        VacationRequest request =
+                requestWithDays(
+                        secondPeriodStart,
+                        20
+                );
+
+        when(
+                vacationRepository
+                        .findByEmployeeIdOrderByStartDateAsc(
+                                employee.getId()
+                        )
+        ).thenReturn(
+                List.of(existingVacation)
+        );
+
+        configureSuccessfulSave();
+
+        VacationResponse response =
+                vacationService.create(
+                        request,
+                        employee
+                );
+
+        assertEquals(20, response.totalDays());
+
+        assertEquals(
+                VacationApprovalStatus.PENDING,
+                response.approvalStatus()
+        );
+
+        verify(vacationRepository)
+                .save(any(Vacation.class));
+    }
+
+    @Test
+    void shouldAllowTenDaysAfterTwentyDays() {
+        Vacation existingVacation =
+                createVacation(
+                        firstPeriodStart,
+                        20,
+                        VacationApprovalStatus.APPROVED
+                );
+
+        VacationRequest request =
+                requestWithDays(
+                        secondPeriodStart,
+                        10
+                );
+
+        when(
+                vacationRepository
+                        .findByEmployeeIdOrderByStartDateAsc(
+                                employee.getId()
+                        )
+        ).thenReturn(
+                List.of(existingVacation)
+        );
+
+        configureSuccessfulSave();
+
+        VacationResponse response =
+                vacationService.create(
+                        request,
+                        employee
+                );
+
+        assertEquals(10, response.totalDays());
+
+        assertEquals(
+                VacationApprovalStatus.PENDING,
+                response.approvalStatus()
+        );
+    }
+
+    @Test
+    void shouldListEmployeeVacationsWithApprovalStatus() {
+        Vacation pendingVacation =
+                createVacation(
+                        firstPeriodStart,
+                        10,
+                        VacationApprovalStatus.PENDING
+                );
+
+        pendingVacation.setId(1L);
+
+        Vacation approvedVacation =
+                createVacation(
+                        secondPeriodStart,
+                        20,
+                        VacationApprovalStatus.APPROVED
+                );
+
+        approvedVacation.setId(2L);
+
+        when(
+                vacationRepository
+                        .findByEmployeeIdOrderByStartDateAsc(
+                                employee.getId()
+                        )
+        ).thenReturn(
+                List.of(
+                        pendingVacation,
+                        approvedVacation
+                )
+        );
+
+        List<VacationResponse> responses =
+                vacationService.findByEmployee(
+                        employee
+                );
+
+        assertEquals(2, responses.size());
+
+        assertEquals(
+                VacationApprovalStatus.PENDING,
+                responses.get(0).approvalStatus()
+        );
+
+        assertEquals(
+                VacationApprovalStatus.APPROVED,
+                responses.get(1).approvalStatus()
+        );
+    }
+
+    @Test
+    void shouldDeleteFutureVacation() {
+        Vacation vacation =
+                createVacation(
+                        firstPeriodStart,
+                        10,
+                        VacationApprovalStatus.PENDING
+                );
+
+        vacation.setId(20L);
+
+        when(
+                vacationRepository
+                        .findByIdAndEmployeeId(
+                                vacation.getId(),
+                                employee.getId()
+                        )
         ).thenReturn(Optional.of(vacation));
 
         vacationService.delete(
@@ -498,136 +781,152 @@ class VacationServiceTest {
                 employee
         );
 
-        verify(vacationRepository).delete(vacation);
+        verify(vacationRepository)
+                .delete(vacation);
     }
 
     @Test
-    void shouldRejectDeleteWhenVacationDoesNotBelongToEmployee() {
-        Long vacationId = 999L;
+    void shouldRejectDeletingVacationStartingToday() {
+        Vacation vacation =
+                createVacation(
+                        today,
+                        10,
+                        VacationApprovalStatus.APPROVED
+                );
+
+        vacation.setId(20L);
 
         when(
-                vacationRepository.findByIdAndEmployeeId(
-                        vacationId,
-                        employee.getId()
-                )
-        ).thenReturn(Optional.empty());
+                vacationRepository
+                        .findByIdAndEmployeeId(
+                                vacation.getId(),
+                                employee.getId()
+                        )
+        ).thenReturn(Optional.of(vacation));
 
-        InvalidVacationException exception = assertThrows(
+        InvalidVacationException exception =
+                assertThrows(
+                        InvalidVacationException.class,
+                        () -> vacationService.delete(
+                                vacation.getId(),
+                                employee
+                        )
+                );
+
+        assertEquals(
+                "Não é possível cancelar férias que já começaram ou terminaram",
+                exception.getMessage()
+        );
+
+        verify(
+                vacationRepository,
+                never()
+        ).delete(any());
+    }
+
+    @Test
+    void shouldRejectDeletingPastVacation() {
+        Vacation vacation =
+                createVacation(
+                        today.minusMonths(1),
+                        10,
+                        VacationApprovalStatus.APPROVED
+                );
+
+        vacation.setId(20L);
+
+        when(
+                vacationRepository
+                        .findByIdAndEmployeeId(
+                                vacation.getId(),
+                                employee.getId()
+                        )
+        ).thenReturn(Optional.of(vacation));
+
+        assertThrows(
                 InvalidVacationException.class,
                 () -> vacationService.delete(
-                        vacationId,
+                        vacation.getId(),
                         employee
                 )
         );
+
+        verify(
+                vacationRepository,
+                never()
+        ).delete(any());
+    }
+
+    @Test
+    void shouldRejectDeletingVacationFromAnotherEmployee() {
+        when(
+                vacationRepository
+                        .findByIdAndEmployeeId(
+                                99L,
+                                employee.getId()
+                        )
+        ).thenReturn(Optional.empty());
+
+        InvalidVacationException exception =
+                assertThrows(
+                        InvalidVacationException.class,
+                        () -> vacationService.delete(
+                                99L,
+                                employee
+                        )
+                );
 
         assertEquals(
                 "Férias não encontradas para este funcionário",
                 exception.getMessage()
         );
 
-        verify(vacationRepository, never())
-                .delete(any(Vacation.class));
+        verify(
+                vacationRepository,
+                never()
+        ).delete(any());
     }
 
-    @Test
-    void shouldRejectDeleteWhenVacationHasAlreadyStarted() {
-        Vacation vacation = createVacation(
-                1L,
-                LocalDate.now(),
-                10
-        );
-
-        when(
-                vacationRepository.findByIdAndEmployeeId(
-                        vacation.getId(),
-                        employee.getId()
-                )
-        ).thenReturn(Optional.of(vacation));
-
-        InvalidVacationException exception = assertThrows(
-                InvalidVacationException.class,
-                () -> vacationService.delete(
-                        vacation.getId(),
-                        employee
-                )
-        );
-
-        assertEquals(
-                "Não é possível cancelar férias que já começaram ou terminaram",
-                exception.getMessage()
-        );
-
-        verify(vacationRepository, never())
-                .delete(any(Vacation.class));
-    }
-
-    @Test
-    void shouldRejectDeleteWhenVacationHasAlreadyEnded() {
-        Vacation vacation = createVacation(
-                1L,
-                LocalDate.now().minusDays(20),
-                10
-        );
-
-        when(
-                vacationRepository.findByIdAndEmployeeId(
-                        vacation.getId(),
-                        employee.getId()
-                )
-        ).thenReturn(Optional.of(vacation));
-
-        InvalidVacationException exception = assertThrows(
-                InvalidVacationException.class,
-                () -> vacationService.delete(
-                        vacation.getId(),
-                        employee
-                )
-        );
-
-        assertEquals(
-                "Não é possível cancelar férias que já começaram ou terminaram",
-                exception.getMessage()
-        );
-
-        verify(vacationRepository, never())
-                .delete(any(Vacation.class));
-    }
-
-    private LocalDate getCurrentCycleStart() {
-        LocalDate cycleStart =
-                employee.getAdmissionDate().plusYears(1);
-
-        while (!LocalDate.now().isBefore(
-                cycleStart.plusYears(1)
-        )) {
-            cycleStart = cycleStart.plusYears(1);
-        }
-
-        return cycleStart;
-    }
-
-    private LocalDate getCurrentCycleEnd() {
-        return getCurrentCycleStart()
-                .plusYears(1)
-                .minusDays(1);
-    }
-
-    private Vacation createVacation(
-            Long id,
+    private VacationRequest requestWithDays(
             LocalDate startDate,
             int totalDays
     ) {
+        return new VacationRequest(
+                startDate,
+                startDate.plusDays(totalDays - 1L)
+        );
+    }
+
+    private Vacation createVacation(
+            LocalDate startDate,
+            int totalDays,
+            VacationApprovalStatus status
+    ) {
         Vacation vacation = new Vacation();
 
-        vacation.setId(id);
         vacation.setStartDate(startDate);
         vacation.setEndDate(
                 startDate.plusDays(totalDays - 1L)
         );
         vacation.setTotalDays(totalDays);
         vacation.setEmployee(employee);
+        vacation.setApprovalStatus(status);
 
         return vacation;
     }
-}
 
+    private void configureSuccessfulSave() {
+        when(
+                vacationRepository.save(
+                        any(Vacation.class)
+                )
+        ).thenAnswer(invocation -> {
+            Vacation vacation =
+                    invocation.getArgument(0);
+
+            vacation.setId(100L);
+
+            return vacation;
+        });
+    }
+}

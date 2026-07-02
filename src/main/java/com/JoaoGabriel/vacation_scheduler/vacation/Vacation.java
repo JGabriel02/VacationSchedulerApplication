@@ -26,10 +26,22 @@ public class Vacation {
     @Column(name = "total_days", nullable = false)
     private Integer totalDays;
 
+    @Enumerated(EnumType.STRING)
+    @Column(name = "approval_status", nullable = false)
+    private VacationApprovalStatus approvalStatus;
+
     @ManyToOne(optional = false)
-    @JoinColumn(name = "employee_id")
+    @JoinColumn(name = "employee_id", nullable = false)
     private Employee employee;
 
     public Vacation() {
+    }
+
+    @PrePersist
+    public void prePersist() {
+        if (approvalStatus == null) {
+            approvalStatus =
+                    VacationApprovalStatus.PENDING;
+        }
     }
 }

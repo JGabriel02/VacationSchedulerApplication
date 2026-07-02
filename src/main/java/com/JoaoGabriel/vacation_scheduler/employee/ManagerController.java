@@ -32,13 +32,13 @@ public class ManagerController {
                 .body(response);
     }
 
-
     @GetMapping("/vacations")
-    public ResponseEntity<List<VacationResponse>> listEmployeeVacations(
+    public ResponseEntity<List<VacationResponse>>
+    listEmployeeVacations(
             Authentication authentication
     ) {
         Employee authenticatedEmployee =
-                (Employee) authentication.getPrincipal();
+                getAuthenticatedEmployee(authentication);
 
         List<VacationResponse> vacations =
                 managerService.listEmployeeVacations(
@@ -48,6 +48,52 @@ public class ManagerController {
         return ResponseEntity.ok(vacations);
     }
 
+    @PatchMapping("/vacations/{id}/approve")
+    public ResponseEntity<VacationResponse>
+    approveVacation(
+            @PathVariable Long id,
+            Authentication authentication
+    ) {
+        Employee authenticatedEmployee =
+                getAuthenticatedEmployee(authentication);
 
+        VacationResponse response =
+                managerService.approveVacation(
+                        id,
+                        authenticatedEmployee
+                );
+
+        return ResponseEntity.ok(response);
+    }
+
+    @PatchMapping("/vacations/{id}/reject")
+    public ResponseEntity<VacationResponse>
+    rejectVacation(
+            @PathVariable Long id,
+            Authentication authentication
+    ) {
+        Employee authenticatedEmployee =
+                getAuthenticatedEmployee(authentication);
+
+        VacationResponse response =
+                managerService.rejectVacation(
+                        id,
+                        authenticatedEmployee
+                );
+
+        return ResponseEntity.ok(response);
+    }
+
+    private Employee getAuthenticatedEmployee(
+            Authentication authentication
+    ) {
+        if (authentication == null
+                || !(authentication.getPrincipal()
+                instanceof Employee employee)) {
+
+            return null;
+        }
+
+        return employee;
+    }
 }
-

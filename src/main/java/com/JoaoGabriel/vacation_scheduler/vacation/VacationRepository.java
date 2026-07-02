@@ -6,9 +6,12 @@ import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
 
-public interface VacationRepository extends JpaRepository<Vacation, Long> {
+public interface VacationRepository
+        extends JpaRepository<Vacation, Long> {
 
-    List<Vacation> findByEmployeeIdOrderByStartDateAsc(Long employeeId);
+    List<Vacation> findByEmployeeIdOrderByStartDateAsc(
+            Long employeeId
+    );
 
     List<Vacation> findByEmployeeIdAndStartDateBetween(
             Long employeeId,
@@ -21,12 +24,12 @@ public interface VacationRepository extends JpaRepository<Vacation, Long> {
             Long employeeId
     );
 
-    boolean existsByStartDateLessThanEqualAndEndDateGreaterThanEqual(
-            LocalDate endDate,
-            LocalDate startDate
+    List<Vacation> findByEmployeeManagerIdOrderByStartDateAsc(
+            Long managerId
     );
 
-    List<Vacation> findByEmployeeManagerIdOrderByStartDateAsc(
+    Optional<Vacation> findByIdAndEmployeeManagerId(
+            Long vacationId,
             Long managerId
     );
 }
