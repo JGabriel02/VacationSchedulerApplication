@@ -7,6 +7,7 @@ import com.JoaoGabriel.vacation_scheduler.employee.dto.ManagerResponse;
 import com.JoaoGabriel.vacation_scheduler.employee.exception.EmailAlreadyExistsException;
 import com.JoaoGabriel.vacation_scheduler.employee.exception.ManagerCodeNotFoundException;
 import lombok.RequiredArgsConstructor;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
@@ -55,8 +56,7 @@ public class EmployeeService {
         employee.setManagerCode(null);
         employee.setManager(manager);
 
-        Employee savedEmployee =
-                employeeRepository.save(employee);
+        Employee savedEmployee = saveNewAccount(employee);
 
         return new EmployeeResponse(
                 savedEmployee.getId(),
@@ -88,8 +88,7 @@ public class EmployeeService {
                 generateUniqueManagerCode()
         );
 
-        Employee savedManager =
-                employeeRepository.save(manager);
+        Employee savedManager = saveNewAccount(manager);
 
         return new ManagerResponse(
                 savedManager.getId(),
@@ -100,9 +99,29 @@ public class EmployeeService {
         );
     }
 
+    /*
+     * O validateEmail cobre o caso comum, mas duas requisições simultâneas
+     * com o mesmo e-mail podem passar pela verificação ao mesmo tempo.
+     * Nesse caso a constraint unique do banco barra a segunda inserção,
+     * e convertemos o erro para a mesma resposta 409 de e-mail duplicado.
+     */
+    private Employee saveNewAccount(Employee employee) {
+        try {
+            return employeeRepository.saveAndFlush(employee);
+        } catch (DataIntegrityViolationException exception) {
+            if (employeeRepository.existsByEmail(employee.getEmail())) {
+                throw new EmailAlreadyExistsException(
+                        "E-mail já cadastrado"
+                );
+            }
+
+            throw exception;
+        }
+    }
+
     private void validateEmail(String email) {
 
-        if (employeeRepository.findByEmail(email).isPresent()) {
+        if (employeeRepository.existsByEmail(email)) {
             throw new EmailAlreadyExistsException(
                     "E-mail já cadastrado"
             );
