@@ -24,6 +24,7 @@ public class VacationService {
             Employee employee
     ) {
         validateEmployee(employee);
+        validateHasApprover(employee);
         validateDates(request);
 
         LocalDate eligibilityDate =
@@ -180,6 +181,20 @@ public class VacationService {
         if (employee.getAdmissionDate() == null) {
             throw new InvalidVacationException(
                     "A data de admissão do funcionário não foi informada"
+            );
+        }
+    }
+
+    /*
+     * Toda solicitação nasce PENDING e só o gestor vinculado pode aprová-la.
+     * Sem gestor (caso de quem tem perfil MANAGER), o pedido ficaria pendente para sempre.
+     */
+    private void validateHasApprover(
+            Employee employee
+    ) {
+        if (employee.getManager() == null) {
+            throw new InvalidVacationException(
+                    "Não há um gestor vinculado para aprovar esta solicitação"
             );
         }
     }

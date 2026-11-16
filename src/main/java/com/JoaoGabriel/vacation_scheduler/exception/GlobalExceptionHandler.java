@@ -2,6 +2,8 @@ package com.JoaoGabriel.vacation_scheduler.exception;
 
 import com.JoaoGabriel.vacation_scheduler.auth.exception.InvalidCredentialsException;
 import com.JoaoGabriel.vacation_scheduler.employee.exception.EmailAlreadyExistsException;
+import com.JoaoGabriel.vacation_scheduler.employee.exception.ManagerCodeNotFoundException;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -38,6 +40,32 @@ public class GlobalExceptionHandler {
                 .status(HttpStatus.UNAUTHORIZED)
                 .body(body);
     }
+    @ExceptionHandler(ManagerCodeNotFoundException.class)
+    @ResponseStatus(HttpStatus.BAD_REQUEST)
+    public Map<String, String> handleManagerCodeNotFound(
+            ManagerCodeNotFoundException exception
+    ) {
+        return Map.of(
+                "message",
+                exception.getMessage()
+        );
+    }
+
+    /*
+     * Fallback para violações de constraint do banco (unique, FK etc.)
+     * que escaparem das validações dos services, evitando um 500 genérico.
+     */
+    @ExceptionHandler(DataIntegrityViolationException.class)
+    @ResponseStatus(HttpStatus.CONFLICT)
+    public Map<String, String> handleDataIntegrityViolation(
+            DataIntegrityViolationException exception
+    ) {
+        return Map.of(
+                "message",
+                "A operação conflita com dados já existentes"
+        );
+    }
+
     @ExceptionHandler(InvalidVacationException.class)
     @ResponseStatus(HttpStatus.BAD_REQUEST)
     public Map<String, String> handleInvalidVacation(

@@ -1,6 +1,7 @@
 package com.JoaoGabriel.vacation_scheduler.vacation;
 
 import com.JoaoGabriel.vacation_scheduler.employee.Employee;
+import com.JoaoGabriel.vacation_scheduler.employee.EmployeeRole;
 import com.JoaoGabriel.vacation_scheduler.vacation.dto.VacationRequest;
 import com.JoaoGabriel.vacation_scheduler.vacation.dto.VacationResponse;
 import com.JoaoGabriel.vacation_scheduler.vacation.exception.InvalidVacationException;
@@ -50,6 +51,12 @@ class VacationServiceTest {
         employee.setAdmissionDate(
                 today.minusYears(2)
         );
+        employee.setRole(EmployeeRole.EMPLOYEE);
+
+        Employee manager = new Employee();
+        manager.setId(2L);
+        manager.setRole(EmployeeRole.MANAGER);
+        employee.setManager(manager);
 
         /*
          * Datas futuras e dentro do ciclo atual.
@@ -344,6 +351,34 @@ class VacationServiceTest {
                 "A data de admissão do funcionário não foi informada",
                 exception.getMessage()
         );
+    }
+
+    @Test
+    void shouldRejectVacationForEmployeeWithoutManager() {
+        employee.setRole(EmployeeRole.MANAGER);
+        employee.setManager(null);
+
+        VacationRequest request =
+                requestWithDays(
+                        firstPeriodStart,
+                        10
+                );
+
+        InvalidVacationException exception =
+                assertThrows(
+                        InvalidVacationException.class,
+                        () -> vacationService.create(
+                                request,
+                                employee
+                        )
+                );
+
+        assertEquals(
+                "Não há um gestor vinculado para aprovar esta solicitação",
+                exception.getMessage()
+        );
+
+        verifyNoInteractions(vacationRepository);
     }
 
     @Test

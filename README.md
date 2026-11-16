@@ -163,7 +163,10 @@ JWT_SECRET=
 JWT_EXPIRATION=3600000
 SPRING_JPA_HIBERNATE_DDL_AUTO=update
 PORT=8080
+CORS_ALLOWED_ORIGINS=http://localhost:5173
 ```
+
+`CORS_ALLOWED_ORIGINS` aceita várias origens separadas por vírgula. Em produção, inclua a URL do frontend publicado, por exemplo `http://localhost:5173,https://meu-frontend.com`.
 
 Como a URL PostgreSQL pode conter usuário e senha, este projeto pode utilizar uma única variável:
 
@@ -276,16 +279,16 @@ No Windows:
 
 Os testes utilizam H2 em memória.
 
-Exemplo de configuração em:
+Os testes de integração usam o perfil `test`, configurado em:
 
 ```text
-src/test/resources/application.properties
+src/test/resources/application-test.properties
 ```
 
 ```properties
 spring.application.name=vacation-scheduler-test
 
-spring.datasource.url=jdbc:h2:mem:vacation_test
+spring.datasource.url=jdbc:h2:mem:vacation_test;MODE=PostgreSQL;DB_CLOSE_DELAY=-1
 spring.datasource.driver-class-name=org.h2.Driver
 spring.datasource.username=sa
 spring.datasource.password=
@@ -293,11 +296,13 @@ spring.datasource.password=
 spring.jpa.hibernate.ddl-auto=create-drop
 spring.jpa.open-in-view=false
 
-jwt.secret=VGhpcy1pcy1hLXRlc3Qtc2VjcmV0LWtleS10aGF0LWlzLWxvbmctZW5vdWdoLWZvci1qd3QtdGVzdHM=
+jwt.secret=dGVzdF9qd3Rfc2VjcmV0X2tleV9mb3JfdmFjYXRpb25fc2NoZWR1bGVyXzIwMjY=
 jwt.expiration=3600000
 
-server.port=0
+app.cors.allowed-origins=http://localhost:5173
 ```
+
+Nenhum banco externo ou variável de ambiente é necessário para rodar os testes.
 
 ---
 
