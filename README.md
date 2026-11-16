@@ -164,7 +164,10 @@ JWT_EXPIRATION=3600000
 SPRING_JPA_HIBERNATE_DDL_AUTO=update
 PORT=8080
 CORS_ALLOWED_ORIGINS=http://localhost:5173
+APP_TIME_ZONE=America/Sao_Paulo
 ```
+
+`APP_TIME_ZONE` define o fuso usado nas regras de férias ("hoje", "data futura") e no job de arquivamento. O padrão é `America/Sao_Paulo`, mesmo quando o servidor roda em UTC.
 
 `CORS_ALLOWED_ORIGINS` aceita várias origens separadas por vírgula. Em produção, inclua a URL do frontend publicado, por exemplo `http://localhost:5173,https://meu-frontend.com`.
 
@@ -594,7 +597,7 @@ Body:
 ```json
 {
   "startDate": "2026-07-01",
-  "endDate": "2026-07-15"
+  "endDate": "2026-07-20"
 }
 ```
 
@@ -604,10 +607,11 @@ Resposta esperada:
 {
   "id": 1,
   "startDate": "2026-07-01",
-  "endDate": "2026-07-15",
-  "totalDays": 15,
+  "endDate": "2026-07-20",
+  "totalDays": 20,
   "employeeId": 2,
-  "employeeName": "Funcionário Teste"
+  "employeeName": "Funcionário Teste",
+  "approvalStatus": "PENDING"
 }
 ```
 
@@ -616,11 +620,24 @@ Resposta esperada:
 ### Listagem das férias do funcionário
 
 ```http
-GET /vacations
+GET /vacations/me
 Authorization: Bearer TOKEN
 ```
 
-Retorna os períodos de férias do funcionário autenticado.
+Retorna os períodos de férias do funcionário autenticado, sem as solicitações arquivadas (mesmo critério da listagem do gestor).
+
+---
+
+### Cancelamento de férias
+
+```http
+DELETE /vacations/{id}
+Authorization: Bearer TOKEN
+```
+
+Resposta: `204 No Content`.
+
+O cancelamento é lógico: o registro não é apagado, apenas passa para o status `CANCELLED`, e continua visível para o gestor. Só é possível cancelar solicitações `PENDING` ou `APPROVED` que ainda não começaram.
 
 ---
 
@@ -650,6 +667,31 @@ Resposta:
 
 ---
 
+## Regras de férias
+
+* o funcionário precisa ter um gestor vinculado (gestores não solicitam férias pela API);
+* as férias só podem começar após 1 ano da data de admissão;
+* a data de início deve ser futura e a data final não pode ser anterior à inicial;
+* cada ciclo de 12 meses permite 30 dias, tirados de uma vez (30) ou divididos em 10 + 20 / 20 + 10;
+* não é permitido sobrepor períodos com solicitações pendentes ou aprovadas;
+* solicitações rejeitadas ou canceladas não contam no saldo nem bloqueiam o período;
+* duas solicitações simultâneas do mesmo funcionário são processadas uma de cada vez (lock no banco), então o limite de 30 dias não pode ser burlado por concorrência.
+
+> **Simplificação intencional:** a CLT (após a reforma de 2017) permite dividir as férias em até 3 períodos, sendo um com pelo menos 14 dias e os demais com pelo menos 5. Este projeto adota apenas as divisões 30 ou 10 + 20 para manter a regra simples.
+
+### Status das solicitações
+
+| Status      | Significado                                     |
+| ----------- | ----------------------------------------------- |
+| `PENDING`   | Aguardando análise do gestor                    |
+| `APPROVED`  | Aprovada pelo gestor                            |
+| `REJECTED`  | Rejeitada pelo gestor                           |
+| `CANCELLED` | Cancelada pelo funcionário antes de começar     |
+
+Rejeitadas e canceladas são arquivadas automaticamente após 90 dias; aprovadas, 365 dias após o fim do período.
+
+---
+
 ## Resumo das rotas
 
 | Método | Rota                  | Acesso      | Descrição              |
@@ -658,8 +700,11 @@ Resposta:
 | POST   | `/employees`          | Público     | Cadastra funcionário   |
 | POST   | `/auth/login`         | Público     | Realiza login          |
 | POST   | `/vacations`          | Autenticado | Cadastra férias        |
-| GET    | `/vacations`          | Funcionário | Lista férias próprias  |
+| GET    | `/vacations/me`       | Funcionário | Lista férias próprias  |
+| DELETE | `/vacations/{id}`     | Funcionário | Cancela férias futuras |
 | GET    | `/managers/vacations` | Gerente     | Lista férias da equipe |
+| PATCH  | `/managers/vacations/{id}/approve` | Gerente | Aprova solicitação |
+| PATCH  | `/managers/vacations/{id}/reject`  | Gerente | Rejeita solicitação |
 
 ---
 
@@ -874,6 +919,22 @@ Neon
 
 A aplicação pode reiniciar sem perder dados porque o banco está hospedado separadamente.
 
+### Atualizando um banco existente (status `CANCELLED`)
+
+Com `ddl-auto=update`, o Hibernate cria uma check constraint com os valores do enum `approval_status`, mas **não a atualiza** quando um valor novo é adicionado. Em um banco criado antes do status `CANCELLED`, rode uma vez no Neon antes de publicar esta versão:
+
+```sql
+ALTER TABLE vacations DROP CONSTRAINT IF EXISTS vacations_approval_status_check;
+```
+
+Se o nome da constraint for diferente, consulte com:
+
+```sql
+SELECT conname FROM pg_constraint WHERE conrelid = 'vacations'::regclass AND contype = 'c';
+```
+
+Adotar Flyway para versionar o schema evita esse tipo de ajuste manual.
+
 ---
 
 ## .gitignore
@@ -935,9 +996,6 @@ README.md
 * recuperação de senha;
 * confirmação de e-mail;
 * edição de perfil;
-* cancelamento de férias;
-* aprovação ou rejeição de solicitações;
-* status de férias;
 * histórico de alterações;
 * notificações;
 * documentação com Swagger/OpenAPI;

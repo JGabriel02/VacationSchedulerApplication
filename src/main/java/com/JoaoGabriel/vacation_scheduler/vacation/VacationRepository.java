@@ -4,6 +4,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 
@@ -11,6 +12,10 @@ public interface VacationRepository
         extends JpaRepository<Vacation, Long> {
 
     List<Vacation> findByEmployeeIdOrderByStartDateAsc(
+            Long employeeId
+    );
+
+    List<Vacation> findByEmployeeIdAndArchivedFalseOrderByStartDateAsc(
             Long employeeId
     );
 
@@ -36,8 +41,8 @@ public interface VacationRepository
     );
 
     List<Vacation>
-    findByArchivedFalseAndApprovalStatusAndUpdatedAtBefore(
-            VacationApprovalStatus approvalStatus,
+    findByArchivedFalseAndApprovalStatusInAndUpdatedAtBefore(
+            Collection<VacationApprovalStatus> approvalStatuses,
             LocalDateTime updatedBefore
     );
 

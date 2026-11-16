@@ -7,6 +7,7 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Clock;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -18,6 +19,7 @@ import java.util.List;
 public class VacationArchiveJob {
 
     private final VacationRepository vacationRepository;
+    private final Clock clock;
 
     @Value(
             "${app.vacation-archive.rejected-after-days:90}"
@@ -36,17 +38,21 @@ public class VacationArchiveJob {
     @Transactional
     public void archiveOldVacations() {
         LocalDateTime rejectedLimit =
-                LocalDateTime.now()
+                LocalDateTime.now(clock)
                         .minusDays(rejectedAfterDays);
 
         LocalDate completedLimit =
-                LocalDate.now()
+                LocalDate.now(clock)
                         .minusDays(completedAfterDays);
 
+        // Canceladas seguem o mesmo prazo das rejeitadas.
         List<Vacation> rejectedVacations =
                 vacationRepository
-                        .findByArchivedFalseAndApprovalStatusAndUpdatedAtBefore(
-                                VacationApprovalStatus.REJECTED,
+                        .findByArchivedFalseAndApprovalStatusInAndUpdatedAtBefore(
+                                List.of(
+                                        VacationApprovalStatus.REJECTED,
+                                        VacationApprovalStatus.CANCELLED
+                                ),
                                 rejectedLimit
                         );
 

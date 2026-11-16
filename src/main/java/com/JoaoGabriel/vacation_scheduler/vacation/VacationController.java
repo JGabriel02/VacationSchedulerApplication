@@ -53,7 +53,7 @@ public class VacationController {
         Employee employee =
                 (Employee) authentication.getPrincipal();
 
-        vacationService.delete(
+        vacationService.cancel(
                 id,
                 employee
         );
