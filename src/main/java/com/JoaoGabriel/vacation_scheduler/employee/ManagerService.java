@@ -12,6 +12,10 @@ import org.springframework.web.server.ResponseStatusException;
 
 import java.util.List;
 
+/*
+ * O papel MANAGER é exigido pelo SecurityConfig (/managers/** -> ROLE_MANAGER).
+ * Aqui só garantimos que a solicitação pertence à equipe do gestor.
+ */
 @Service
 @RequiredArgsConstructor
 public class ManagerService {
@@ -20,13 +24,11 @@ public class ManagerService {
 
     @Transactional(readOnly = true)
     public List<VacationResponse> listEmployeeVacations(
-            Employee authenticatedEmployee
+            Long managerId
     ) {
-        validateManager(authenticatedEmployee);
-
         return vacationRepository
                 .findByEmployeeManagerIdAndArchivedFalseOrderByStartDateAsc(
-                        authenticatedEmployee.getId()
+                        managerId
                 )
                 .stream()
                 .map(this::toResponse)
@@ -36,13 +38,11 @@ public class ManagerService {
     @Transactional
     public VacationResponse approveVacation(
             Long vacationId,
-            Employee authenticatedEmployee
+            Long managerId
     ) {
-        validateManager(authenticatedEmployee);
-
         Vacation vacation = findTeamVacation(
                 vacationId,
-                authenticatedEmployee.getId()
+                managerId
         );
 
         validateNotArchived(vacation);
@@ -61,13 +61,11 @@ public class ManagerService {
     @Transactional
     public VacationResponse rejectVacation(
             Long vacationId,
-            Employee authenticatedEmployee
+            Long managerId
     ) {
-        validateManager(authenticatedEmployee);
-
         Vacation vacation = findTeamVacation(
                 vacationId,
-                authenticatedEmployee.getId()
+                managerId
         );
 
         validateNotArchived(vacation);
@@ -98,26 +96,6 @@ public class ManagerService {
                                 "Solicitação de férias não encontrada para esta equipe"
                         )
                 );
-    }
-
-    private void validateManager(
-            Employee authenticatedEmployee
-    ) {
-        if (authenticatedEmployee == null) {
-            throw new ResponseStatusException(
-                    HttpStatus.UNAUTHORIZED,
-                    "Autenticação necessária"
-            );
-        }
-
-        if (authenticatedEmployee.getRole()
-                != EmployeeRole.MANAGER) {
-
-            throw new ResponseStatusException(
-                    HttpStatus.FORBIDDEN,
-                    "Apenas gestores podem realizar esta operação"
-            );
-        }
     }
 
     private void validatePendingStatus(

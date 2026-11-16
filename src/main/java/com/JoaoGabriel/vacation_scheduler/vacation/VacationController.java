@@ -1,12 +1,12 @@
 package com.JoaoGabriel.vacation_scheduler.vacation;
 
-import com.JoaoGabriel.vacation_scheduler.employee.Employee;
+import com.JoaoGabriel.vacation_scheduler.security.AuthenticatedUser;
 import com.JoaoGabriel.vacation_scheduler.vacation.dto.VacationRequest;
 import com.JoaoGabriel.vacation_scheduler.vacation.dto.VacationResponse;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
-import org.springframework.security.core.Authentication;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -22,40 +22,24 @@ public class VacationController {
     @ResponseStatus(HttpStatus.CREATED)
     public VacationResponse create(
             @Valid @RequestBody VacationRequest request,
-            Authentication authentication
+            @AuthenticationPrincipal AuthenticatedUser user
     ) {
-
-        Employee employee =
-                (Employee) authentication.getPrincipal();
-
-        return vacationService.create(
-                request,
-                employee
-        );
+        return vacationService.create(request, user.id());
     }
 
     @GetMapping("/me")
     public List<VacationResponse> findMyVacations(
-            Authentication authentication
+            @AuthenticationPrincipal AuthenticatedUser user
     ) {
-        Employee employee =
-                (Employee) authentication.getPrincipal();
-
-        return vacationService.findByEmployee(employee);
+        return vacationService.findByEmployee(user.id());
     }
 
     @DeleteMapping("/{id}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void delete(
             @PathVariable Long id,
-            Authentication authentication
+            @AuthenticationPrincipal AuthenticatedUser user
     ) {
-        Employee employee =
-                (Employee) authentication.getPrincipal();
-
-        vacationService.delete(
-                id,
-                employee
-        );
+        vacationService.cancel(id, user.id());
     }
 }

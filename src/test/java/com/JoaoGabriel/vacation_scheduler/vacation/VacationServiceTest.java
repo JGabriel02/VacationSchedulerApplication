@@ -1,6 +1,7 @@
 package com.JoaoGabriel.vacation_scheduler.vacation;
 
 import com.JoaoGabriel.vacation_scheduler.employee.Employee;
+import com.JoaoGabriel.vacation_scheduler.employee.EmployeeRepository;
 import com.JoaoGabriel.vacation_scheduler.employee.EmployeeRole;
 import com.JoaoGabriel.vacation_scheduler.vacation.dto.VacationRequest;
 import com.JoaoGabriel.vacation_scheduler.vacation.dto.VacationResponse;
@@ -12,7 +13,9 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.time.Clock;
 import java.time.LocalDate;
+import java.time.ZoneId;
 import java.util.List;
 import java.util.Optional;
 
@@ -23,8 +26,14 @@ import static org.mockito.Mockito.*;
 @ExtendWith(MockitoExtension.class)
 class VacationServiceTest {
 
+    private static final ZoneId ZONE =
+            ZoneId.of("America/Sao_Paulo");
+
     @Mock
     private VacationRepository vacationRepository;
+
+    @Mock
+    private EmployeeRepository employeeRepository;
 
     private VacationService vacationService;
 
@@ -36,10 +45,22 @@ class VacationServiceTest {
 
     @BeforeEach
     void setUp() {
-        vacationService =
-                new VacationService(vacationRepository);
+        /*
+         * Relógio fixo: os testes não dependem do dia em que rodam.
+         */
+        today = LocalDate.of(2026, 3, 10);
 
-        today = LocalDate.now();
+        Clock clock = Clock.fixed(
+                today.atStartOfDay(ZONE).toInstant(),
+                ZONE
+        );
+
+        vacationService =
+                new VacationService(
+                        vacationRepository,
+                        employeeRepository,
+                        clock
+                );
 
         /*
          * Como a admissão ocorreu há dois anos,
@@ -57,6 +78,12 @@ class VacationServiceTest {
         manager.setId(2L);
         manager.setRole(EmployeeRole.MANAGER);
         employee.setManager(manager);
+
+        lenient().when(
+                employeeRepository.findByIdForUpdate(
+                        employee.getId()
+                )
+        ).thenReturn(Optional.of(employee));
 
         /*
          * Datas futuras e dentro do ciclo atual.
@@ -99,7 +126,7 @@ class VacationServiceTest {
         VacationResponse response =
                 vacationService.create(
                         request,
-                        employee
+                        employee.getId()
                 );
 
         assertNotNull(response);
@@ -145,6 +172,9 @@ class VacationServiceTest {
                 employee,
                 savedVacation.getEmployee()
         );
+
+        verify(employeeRepository)
+                .findByIdForUpdate(employee.getId());
     }
 
     @Test
@@ -167,7 +197,7 @@ class VacationServiceTest {
         VacationResponse response =
                 vacationService.create(
                         request,
-                        employee
+                        employee.getId()
                 );
 
         assertEquals(10, response.totalDays());
@@ -191,7 +221,7 @@ class VacationServiceTest {
                         InvalidVacationException.class,
                         () -> vacationService.create(
                                 request,
-                                employee
+                                employee.getId()
                         )
                 );
 
@@ -219,7 +249,7 @@ class VacationServiceTest {
                         InvalidVacationException.class,
                         () -> vacationService.create(
                                 request,
-                                employee
+                                employee.getId()
                         )
                 );
 
@@ -244,7 +274,7 @@ class VacationServiceTest {
                         InvalidVacationException.class,
                         () -> vacationService.create(
                                 request,
-                                employee
+                                employee.getId()
                         )
                 );
 
@@ -267,7 +297,7 @@ class VacationServiceTest {
                         InvalidVacationException.class,
                         () -> vacationService.create(
                                 request,
-                                employee
+                                employee.getId()
                         )
                 );
 
@@ -294,7 +324,7 @@ class VacationServiceTest {
                         InvalidVacationException.class,
                         () -> vacationService.create(
                                 request,
-                                employee
+                                employee.getId()
                         )
                 );
 
@@ -313,12 +343,15 @@ class VacationServiceTest {
                         10
                 );
 
+        when(employeeRepository.findByIdForUpdate(999L))
+                .thenReturn(Optional.empty());
+
         InvalidVacationException exception =
                 assertThrows(
                         InvalidVacationException.class,
                         () -> vacationService.create(
                                 request,
-                                null
+                                999L
                         )
                 );
 
@@ -343,7 +376,7 @@ class VacationServiceTest {
                         InvalidVacationException.class,
                         () -> vacationService.create(
                                 request,
-                                employee
+                                employee.getId()
                         )
                 );
 
@@ -369,7 +402,7 @@ class VacationServiceTest {
                         InvalidVacationException.class,
                         () -> vacationService.create(
                                 request,
-                                employee
+                                employee.getId()
                         )
                 );
 
@@ -410,7 +443,7 @@ class VacationServiceTest {
                         InvalidVacationException.class,
                         () -> vacationService.create(
                                 request,
-                                employee
+                                employee.getId()
                         )
                 );
 
@@ -453,7 +486,7 @@ class VacationServiceTest {
                 InvalidVacationException.class,
                 () -> vacationService.create(
                         request,
-                        employee
+                        employee.getId()
                 )
         );
 
@@ -492,7 +525,7 @@ class VacationServiceTest {
         VacationResponse response =
                 vacationService.create(
                         request,
-                        employee
+                        employee.getId()
                 );
 
         assertNotNull(response);
@@ -532,7 +565,7 @@ class VacationServiceTest {
                         InvalidVacationException.class,
                         () -> vacationService.create(
                                 request,
-                                employee
+                                employee.getId()
                         )
                 );
 
@@ -575,7 +608,7 @@ class VacationServiceTest {
                 InvalidVacationException.class,
                 () -> vacationService.create(
                         request,
-                        employee
+                        employee.getId()
                 )
         );
     }
@@ -609,7 +642,7 @@ class VacationServiceTest {
         VacationResponse response =
                 vacationService.create(
                         request,
-                        employee
+                        employee.getId()
                 );
 
         assertEquals(30, response.totalDays());
@@ -644,7 +677,7 @@ class VacationServiceTest {
                         InvalidVacationException.class,
                         () -> vacationService.create(
                                 request,
-                                employee
+                                employee.getId()
                         )
                 );
 
@@ -688,7 +721,7 @@ class VacationServiceTest {
         VacationResponse response =
                 vacationService.create(
                         request,
-                        employee
+                        employee.getId()
                 );
 
         assertEquals(20, response.totalDays());
@@ -731,7 +764,7 @@ class VacationServiceTest {
         VacationResponse response =
                 vacationService.create(
                         request,
-                        employee
+                        employee.getId()
                 );
 
         assertEquals(10, response.totalDays());
@@ -764,7 +797,7 @@ class VacationServiceTest {
 
         when(
                 vacationRepository
-                        .findByEmployeeIdOrderByStartDateAsc(
+                        .findByEmployeeIdAndArchivedFalseOrderByStartDateAsc(
                                 employee.getId()
                         )
         ).thenReturn(
@@ -776,7 +809,7 @@ class VacationServiceTest {
 
         List<VacationResponse> responses =
                 vacationService.findByEmployee(
-                        employee
+                        employee.getId()
                 );
 
         assertEquals(2, responses.size());
@@ -793,7 +826,7 @@ class VacationServiceTest {
     }
 
     @Test
-    void shouldDeleteFutureVacation() {
+    void shouldCancelFutureVacationKeepingTheRecord() {
         Vacation vacation =
                 createVacation(
                         firstPeriodStart,
@@ -811,13 +844,117 @@ class VacationServiceTest {
                         )
         ).thenReturn(Optional.of(vacation));
 
-        vacationService.delete(
+        vacationService.cancel(
                 vacation.getId(),
-                employee
+                employee.getId()
         );
 
-        verify(vacationRepository)
-                .delete(vacation);
+        assertEquals(
+                VacationApprovalStatus.CANCELLED,
+                vacation.getApprovalStatus()
+        );
+
+        verify(vacationRepository).save(vacation);
+        verify(vacationRepository, never()).delete(any());
+    }
+
+    @Test
+    void shouldRejectCancellingRejectedVacation() {
+        Vacation vacation =
+                createVacation(
+                        firstPeriodStart,
+                        10,
+                        VacationApprovalStatus.REJECTED
+                );
+
+        vacation.setId(21L);
+
+        when(
+                vacationRepository
+                        .findByIdAndEmployeeId(
+                                vacation.getId(),
+                                employee.getId()
+                        )
+        ).thenReturn(Optional.of(vacation));
+
+        InvalidVacationException exception =
+                assertThrows(
+                        InvalidVacationException.class,
+                        () -> vacationService.cancel(
+                                vacation.getId(),
+                                employee.getId()
+                        )
+                );
+
+        assertEquals(
+                "Apenas solicitações pendentes ou aprovadas podem ser canceladas",
+                exception.getMessage()
+        );
+
+        verify(vacationRepository, never()).save(any());
+    }
+
+    @Test
+    void shouldRejectCancellingTwice() {
+        Vacation vacation =
+                createVacation(
+                        firstPeriodStart,
+                        10,
+                        VacationApprovalStatus.CANCELLED
+                );
+
+        vacation.setId(22L);
+
+        when(
+                vacationRepository
+                        .findByIdAndEmployeeId(
+                                vacation.getId(),
+                                employee.getId()
+                        )
+        ).thenReturn(Optional.of(vacation));
+
+        assertThrows(
+                InvalidVacationException.class,
+                () -> vacationService.cancel(
+                        vacation.getId(),
+                        employee.getId()
+                )
+        );
+    }
+
+    @Test
+    void shouldIgnoreCancelledVacationInOverlapAndThirtyDayLimit() {
+        Vacation cancelledVacation =
+                createVacation(
+                        firstPeriodStart,
+                        30,
+                        VacationApprovalStatus.CANCELLED
+                );
+
+        VacationRequest request =
+                requestWithDays(
+                        firstPeriodStart,
+                        30
+                );
+
+        when(
+                vacationRepository
+                        .findByEmployeeIdOrderByStartDateAsc(
+                                employee.getId()
+                        )
+        ).thenReturn(
+                List.of(cancelledVacation)
+        );
+
+        configureSuccessfulSave();
+
+        VacationResponse response =
+                vacationService.create(
+                        request,
+                        employee.getId()
+                );
+
+        assertEquals(30, response.totalDays());
     }
 
     @Test
@@ -842,9 +979,9 @@ class VacationServiceTest {
         InvalidVacationException exception =
                 assertThrows(
                         InvalidVacationException.class,
-                        () -> vacationService.delete(
+                        () -> vacationService.cancel(
                                 vacation.getId(),
-                                employee
+                                employee.getId()
                         )
                 );
 
@@ -880,9 +1017,9 @@ class VacationServiceTest {
 
         assertThrows(
                 InvalidVacationException.class,
-                () -> vacationService.delete(
+                () -> vacationService.cancel(
                         vacation.getId(),
-                        employee
+                        employee.getId()
                 )
         );
 
@@ -905,9 +1042,9 @@ class VacationServiceTest {
         InvalidVacationException exception =
                 assertThrows(
                         InvalidVacationException.class,
-                        () -> vacationService.delete(
+                        () -> vacationService.cancel(
                                 99L,
-                                employee
+                                employee.getId()
                         )
                 );
 

@@ -1,6 +1,7 @@
 package com.JoaoGabriel.vacation_scheduler.vacation;
 
 import com.JoaoGabriel.vacation_scheduler.employee.Employee;
+import com.JoaoGabriel.vacation_scheduler.employee.EmployeeRepository;
 import com.JoaoGabriel.vacation_scheduler.vacation.dto.VacationRequest;
 import com.JoaoGabriel.vacation_scheduler.vacation.dto.VacationResponse;
 import com.JoaoGabriel.vacation_scheduler.vacation.exception.InvalidVacationException;
@@ -8,6 +9,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Clock;
 import java.time.LocalDate;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
@@ -17,12 +19,25 @@ import java.util.List;
 public class VacationService {
 
     private final VacationRepository vacationRepository;
+    private final EmployeeRepository employeeRepository;
+    private final Clock clock;
 
     @Transactional
     public VacationResponse create(
             VacationRequest request,
-            Employee employee
+            Long employeeId
     ) {
+        /*
+         * Trava a linha do funcionário até o fim da transação. Sem isso, duas
+         * solicitações simultâneas leem o mesmo saldo e ambas passam no limite
+         * de 30 dias.
+         */
+        Employee employee = employeeRepository
+                .findByIdForUpdate(employeeId)
+                .orElseThrow(() -> new InvalidVacationException(
+                        "Funcionário autenticado não encontrado"
+                ));
+
         validateEmployee(employee);
         validateHasApprover(employee);
         validateDates(request);
@@ -45,7 +60,7 @@ public class VacationService {
         LocalDate cycleEnd =
                 calculateCycleEnd(cycleStart);
 
-        if (LocalDate.now().isBefore(cycleStart)) {
+        if (today().isBefore(cycleStart)) {
             throw new InvalidVacationException(
                     "Este ciclo de férias só estará disponível a partir de "
                             + cycleStart
@@ -81,8 +96,7 @@ public class VacationService {
         List<Vacation> vacationsInCycle =
                 allEmployeeVacations.stream()
                         .filter(vacation ->
-                                vacation.getApprovalStatus()
-                                        != VacationApprovalStatus.REJECTED
+                                vacation.getApprovalStatus().isActive()
                         )
                         .filter(vacation ->
                                 !vacation.getStartDate()
@@ -127,30 +141,30 @@ public class VacationService {
 
     @Transactional(readOnly = true)
     public List<VacationResponse> findByEmployee(
-            Employee employee
+            Long employeeId
     ) {
-        validateEmployee(employee);
-
         return vacationRepository
-                .findByEmployeeIdOrderByStartDateAsc(
-                        employee.getId()
+                .findByEmployeeIdAndArchivedFalseOrderByStartDateAsc(
+                        employeeId
                 )
                 .stream()
                 .map(this::toResponse)
                 .toList();
     }
 
+    /*
+     * Cancelamento lógico: o registro continua no banco com status CANCELLED,
+     * para o gestor e o histórico enxergarem o que aconteceu.
+     */
     @Transactional
-    public void delete(
+    public void cancel(
             Long vacationId,
-            Employee employee
+            Long employeeId
     ) {
-        validateEmployee(employee);
-
         Vacation vacation = vacationRepository
                 .findByIdAndEmployeeId(
                         vacationId,
-                        employee.getId()
+                        employeeId
                 )
                 .orElseThrow(() ->
                         new InvalidVacationException(
@@ -158,26 +172,36 @@ public class VacationService {
                         )
                 );
 
+        if (vacation.isArchived()
+                || !vacation.getApprovalStatus().isActive()) {
+
+            throw new InvalidVacationException(
+                    "Apenas solicitações pendentes ou aprovadas podem ser canceladas"
+            );
+        }
+
         if (!vacation.getStartDate()
-                .isAfter(LocalDate.now())) {
+                .isAfter(today())) {
 
             throw new InvalidVacationException(
                     "Não é possível cancelar férias que já começaram ou terminaram"
             );
         }
 
-        vacationRepository.delete(vacation);
+        vacation.setApprovalStatus(
+                VacationApprovalStatus.CANCELLED
+        );
+
+        vacationRepository.save(vacation);
+    }
+
+    private LocalDate today() {
+        return LocalDate.now(clock);
     }
 
     private void validateEmployee(
             Employee employee
     ) {
-        if (employee == null) {
-            throw new InvalidVacationException(
-                    "Funcionário autenticado não encontrado"
-            );
-        }
-
         if (employee.getAdmissionDate() == null) {
             throw new InvalidVacationException(
                     "A data de admissão do funcionário não foi informada"
@@ -203,7 +227,7 @@ public class VacationService {
             VacationRequest request
     ) {
         if (!request.startDate()
-                .isAfter(LocalDate.now())) {
+                .isAfter(today())) {
 
             throw new InvalidVacationException(
                     "A data de início das férias deve ser futura"
@@ -250,8 +274,7 @@ public class VacationService {
         boolean overlapping =
                 employeeVacations.stream()
                         .filter(vacation ->
-                                vacation.getApprovalStatus()
-                                        != VacationApprovalStatus.REJECTED
+                                vacation.getApprovalStatus().isActive()
                         )
                         .anyMatch(vacation ->
                                 !vacation.getStartDate()

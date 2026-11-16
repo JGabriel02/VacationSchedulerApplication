@@ -4,7 +4,8 @@ import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.PastOrPresent;
-import jakarta.validation.constraints.Size;
+
+import com.JoaoGabriel.vacation_scheduler.employee.validation.StrongPassword;
 
 import java.time.LocalDate;
 
@@ -17,8 +18,7 @@ public record ManagerRequest(
         @Email(message = "O e-mail deve ser válido")
         String email,
 
-        @NotBlank(message = "A senha é obrigatória")
-        @Size(min = 6, message = "A senha deve ter no mínimo 6 caracteres")
+        @StrongPassword
         String password,
 
         @NotNull(message = "A data de admissão é obrigatória")

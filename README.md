@@ -164,7 +164,16 @@ JWT_EXPIRATION=3600000
 SPRING_JPA_HIBERNATE_DDL_AUTO=update
 PORT=8080
 CORS_ALLOWED_ORIGINS=http://localhost:5173
+APP_TIME_ZONE=America/Sao_Paulo
+LOGIN_MAX_ATTEMPTS_PER_IP=20
+LOGIN_IP_WINDOW=1m
+LOGIN_MAX_FAILURES_PER_EMAIL=5
+LOGIN_EMAIL_WINDOW=15m
 ```
+
+As variáveis `LOGIN_*` controlam o limite de tentativas de login (veja [Autenticação](#autenticação)). Os valores acima são os padrões.
+
+`APP_TIME_ZONE` define o fuso usado nas regras de férias ("hoje", "data futura") e no job de arquivamento. O padrão é `America/Sao_Paulo`, mesmo quando o servidor roda em UTC.
 
 `CORS_ALLOWED_ORIGINS` aceita várias origens separadas por vírgula. Em produção, inclua a URL do frontend publicado, por exemplo `http://localhost:5173,https://meu-frontend.com`.
 
@@ -469,6 +478,36 @@ GET /managers/vacations
 Authorization: Bearer eyJhbGciOiJIUzI1NiJ9...
 ```
 
+O token traz o e-mail (`sub`) e o papel (`role`) do usuário. A cada requisição o papel é relido do banco, então uma conta removida ou com papel alterado deixa de ter acesso na hora.
+
+### Controle de acesso
+
+| Rotas                          | Acesso                                   |
+| ------------------------------ | ---------------------------------------- |
+| `POST /auth/login`, `POST /employees`, `POST /managers` | Público                  |
+| `/managers/**` (exceto o cadastro) | Apenas `MANAGER` (`ROLE_MANAGER`)    |
+| `/vacations/**`                | Apenas `EMPLOYEE` (`ROLE_EMPLOYEE`)      |
+| Demais rotas (ex.: `GET /employees/me`) | Qualquer usuário autenticado    |
+
+Sem token, a resposta é `401`. Com token de outro papel, `403`.
+
+O cadastro de gestor (`POST /managers`) é público **por decisão de produto**: o gestor cria a conta e repassa o `managerCode` para a equipe se cadastrar.
+
+### Senhas
+
+No cadastro, a senha deve ter de 8 a 72 caracteres, com pelo menos uma letra e um número. O limite de 72 vem do BCrypt. Contas antigas, criadas com a regra anterior (mínimo de 6), continuam fazendo login normalmente.
+
+### Limite de tentativas de login
+
+* por IP: no máximo 20 tentativas por minuto;
+* por e-mail: depois de 5 falhas em 15 minutos, o login fica bloqueado até a janela acabar. Um login bem-sucedido zera o contador.
+
+Quando o limite é atingido, a API responde `429 Too Many Requests` com o header `Retry-After` (em segundos). Os contadores ficam em memória, então valem por instância. Com mais de uma réplica, eles precisariam ir para um store compartilhado, como o Redis.
+
+Quando o e-mail não existe, a API também roda o BCrypt (contra um hash fictício). Assim o tempo de resposta não revela quais e-mails estão cadastrados.
+
+Para obter o IP real atrás do proxy do Render, a aplicação usa `server.forward-headers-strategy=native`, que só aceita `X-Forwarded-For` vindo de proxies da rede interna.
+
 ---
 
 ## Perfis
@@ -567,17 +606,20 @@ Body:
 }
 ```
 
-A resposta retorna um token JWT.
-
-Exemplo:
+Resposta:
 
 ```json
 {
+  "id": 2,
+  "nome": "Funcionário Teste",
+  "email": "funcionario@teste.com",
+  "role": "EMPLOYEE",
+  "managerCode": null,
   "token": "SEU_TOKEN_JWT"
 }
 ```
 
-A estrutura exata pode variar conforme o DTO implementado.
+Erros: `401` para e-mail ou senha inválidos e `429` quando o limite de tentativas é atingido.
 
 ---
 
@@ -594,7 +636,7 @@ Body:
 ```json
 {
   "startDate": "2026-07-01",
-  "endDate": "2026-07-15"
+  "endDate": "2026-07-20"
 }
 ```
 
@@ -604,10 +646,11 @@ Resposta esperada:
 {
   "id": 1,
   "startDate": "2026-07-01",
-  "endDate": "2026-07-15",
-  "totalDays": 15,
+  "endDate": "2026-07-20",
+  "totalDays": 20,
   "employeeId": 2,
-  "employeeName": "Funcionário Teste"
+  "employeeName": "Funcionário Teste",
+  "approvalStatus": "PENDING"
 }
 ```
 
@@ -616,11 +659,24 @@ Resposta esperada:
 ### Listagem das férias do funcionário
 
 ```http
-GET /vacations
+GET /vacations/me
 Authorization: Bearer TOKEN
 ```
 
-Retorna os períodos de férias do funcionário autenticado.
+Retorna os períodos de férias do funcionário autenticado, sem as solicitações arquivadas (mesmo critério da listagem do gestor).
+
+---
+
+### Cancelamento de férias
+
+```http
+DELETE /vacations/{id}
+Authorization: Bearer TOKEN
+```
+
+Resposta: `204 No Content`.
+
+O cancelamento é lógico: o registro não é apagado, apenas passa para o status `CANCELLED`, e continua visível para o gestor. Só é possível cancelar solicitações `PENDING` ou `APPROVED` que ainda não começaram.
 
 ---
 
@@ -650,6 +706,31 @@ Resposta:
 
 ---
 
+## Regras de férias
+
+* o funcionário precisa ter um gestor vinculado (gestores não solicitam férias pela API);
+* as férias só podem começar após 1 ano da data de admissão;
+* a data de início deve ser futura e a data final não pode ser anterior à inicial;
+* cada ciclo de 12 meses permite 30 dias, tirados de uma vez (30) ou divididos em 10 + 20 / 20 + 10;
+* não é permitido sobrepor períodos com solicitações pendentes ou aprovadas;
+* solicitações rejeitadas ou canceladas não contam no saldo nem bloqueiam o período;
+* duas solicitações simultâneas do mesmo funcionário são processadas uma de cada vez (lock no banco), então o limite de 30 dias não pode ser burlado por concorrência.
+
+> **Simplificação intencional:** a CLT (após a reforma de 2017) permite dividir as férias em até 3 períodos, sendo um com pelo menos 14 dias e os demais com pelo menos 5. Este projeto adota apenas as divisões 30 ou 10 + 20 para manter a regra simples.
+
+### Status das solicitações
+
+| Status      | Significado                                     |
+| ----------- | ----------------------------------------------- |
+| `PENDING`   | Aguardando análise do gestor                    |
+| `APPROVED`  | Aprovada pelo gestor                            |
+| `REJECTED`  | Rejeitada pelo gestor                           |
+| `CANCELLED` | Cancelada pelo funcionário antes de começar     |
+
+Rejeitadas e canceladas são arquivadas automaticamente após 90 dias; aprovadas, 365 dias após o fim do período.
+
+---
+
 ## Resumo das rotas
 
 | Método | Rota                  | Acesso      | Descrição              |
@@ -658,8 +739,11 @@ Resposta:
 | POST   | `/employees`          | Público     | Cadastra funcionário   |
 | POST   | `/auth/login`         | Público     | Realiza login          |
 | POST   | `/vacations`          | Autenticado | Cadastra férias        |
-| GET    | `/vacations`          | Funcionário | Lista férias próprias  |
+| GET    | `/vacations/me`       | Funcionário | Lista férias próprias  |
+| DELETE | `/vacations/{id}`     | Funcionário | Cancela férias futuras |
 | GET    | `/managers/vacations` | Gerente     | Lista férias da equipe |
+| PATCH  | `/managers/vacations/{id}/approve` | Gerente | Aprova solicitação |
+| PATCH  | `/managers/vacations/{id}/reject`  | Gerente | Rejeita solicitação |
 
 ---
 
@@ -874,6 +958,22 @@ Neon
 
 A aplicação pode reiniciar sem perder dados porque o banco está hospedado separadamente.
 
+### Atualizando um banco existente (status `CANCELLED`)
+
+Com `ddl-auto=update`, o Hibernate cria uma check constraint com os valores do enum `approval_status`, mas **não a atualiza** quando um valor novo é adicionado. Em um banco criado antes do status `CANCELLED`, rode uma vez no Neon antes de publicar esta versão:
+
+```sql
+ALTER TABLE vacations DROP CONSTRAINT IF EXISTS vacations_approval_status_check;
+```
+
+Se o nome da constraint for diferente, consulte com:
+
+```sql
+SELECT conname FROM pg_constraint WHERE conrelid = 'vacations'::regclass AND contype = 'c';
+```
+
+Adotar Flyway para versionar o schema evita esse tipo de ajuste manual.
+
 ---
 
 ## .gitignore
@@ -935,9 +1035,6 @@ README.md
 * recuperação de senha;
 * confirmação de e-mail;
 * edição de perfil;
-* cancelamento de férias;
-* aprovação ou rejeição de solicitações;
-* status de férias;
 * histórico de alterações;
 * notificações;
 * documentação com Swagger/OpenAPI;
