@@ -165,7 +165,13 @@ SPRING_JPA_HIBERNATE_DDL_AUTO=update
 PORT=8080
 CORS_ALLOWED_ORIGINS=http://localhost:5173
 APP_TIME_ZONE=America/Sao_Paulo
+LOGIN_MAX_ATTEMPTS_PER_IP=20
+LOGIN_IP_WINDOW=1m
+LOGIN_MAX_FAILURES_PER_EMAIL=5
+LOGIN_EMAIL_WINDOW=15m
 ```
+
+As variáveis `LOGIN_*` controlam o limite de tentativas de login (veja [Autenticação](#autenticação)). Os valores acima são os padrões.
 
 `APP_TIME_ZONE` define o fuso usado nas regras de férias ("hoje", "data futura") e no job de arquivamento. O padrão é `America/Sao_Paulo`, mesmo quando o servidor roda em UTC.
 
@@ -472,6 +478,36 @@ GET /managers/vacations
 Authorization: Bearer eyJhbGciOiJIUzI1NiJ9...
 ```
 
+O token traz o e-mail (`sub`) e o papel (`role`) do usuário. A cada requisição o papel é relido do banco, então uma conta removida ou com papel alterado deixa de ter acesso na hora.
+
+### Controle de acesso
+
+| Rotas                          | Acesso                                   |
+| ------------------------------ | ---------------------------------------- |
+| `POST /auth/login`, `POST /employees`, `POST /managers` | Público                  |
+| `/managers/**` (exceto o cadastro) | Apenas `MANAGER` (`ROLE_MANAGER`)    |
+| `/vacations/**`                | Apenas `EMPLOYEE` (`ROLE_EMPLOYEE`)      |
+| Demais rotas (ex.: `GET /employees/me`) | Qualquer usuário autenticado    |
+
+Sem token, a resposta é `401`. Com token de outro papel, `403`.
+
+O cadastro de gestor (`POST /managers`) é público **por decisão de produto**: o gestor cria a conta e repassa o `managerCode` para a equipe se cadastrar.
+
+### Senhas
+
+No cadastro, a senha deve ter de 8 a 72 caracteres, com pelo menos uma letra e um número. O limite de 72 vem do BCrypt. Contas antigas, criadas com a regra anterior (mínimo de 6), continuam fazendo login normalmente.
+
+### Limite de tentativas de login
+
+* por IP: no máximo 20 tentativas por minuto;
+* por e-mail: depois de 5 falhas em 15 minutos, o login fica bloqueado até a janela acabar. Um login bem-sucedido zera o contador.
+
+Quando o limite é atingido, a API responde `429 Too Many Requests` com o header `Retry-After` (em segundos). Os contadores ficam em memória, então valem por instância. Com mais de uma réplica, eles precisariam ir para um store compartilhado, como o Redis.
+
+Quando o e-mail não existe, a API também roda o BCrypt (contra um hash fictício). Assim o tempo de resposta não revela quais e-mails estão cadastrados.
+
+Para obter o IP real atrás do proxy do Render, a aplicação usa `server.forward-headers-strategy=native`, que só aceita `X-Forwarded-For` vindo de proxies da rede interna.
+
 ---
 
 ## Perfis
@@ -570,17 +606,20 @@ Body:
 }
 ```
 
-A resposta retorna um token JWT.
-
-Exemplo:
+Resposta:
 
 ```json
 {
+  "id": 2,
+  "nome": "Funcionário Teste",
+  "email": "funcionario@teste.com",
+  "role": "EMPLOYEE",
+  "managerCode": null,
   "token": "SEU_TOKEN_JWT"
 }
 ```
 
-A estrutura exata pode variar conforme o DTO implementado.
+Erros: `401` para e-mail ou senha inválidos e `429` quando o limite de tentativas é atingido.
 
 ---
 

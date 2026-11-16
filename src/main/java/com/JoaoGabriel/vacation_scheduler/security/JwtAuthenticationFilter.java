@@ -1,6 +1,5 @@
 package com.JoaoGabriel.vacation_scheduler.security;
 
-import com.JoaoGabriel.vacation_scheduler.employee.Employee;
 import com.JoaoGabriel.vacation_scheduler.employee.EmployeeRepository;
 import io.jsonwebtoken.JwtException;
 import jakarta.servlet.FilterChain;
@@ -15,7 +14,6 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
-import java.util.Collections;
 
 @Component
 @RequiredArgsConstructor
@@ -35,7 +33,8 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                 request.getHeader("Authorization");
 
         if (authorizationHeader == null
-                || !authorizationHeader.startsWith("Bearer ")) {
+                || !authorizationHeader.startsWith("Bearer ")
+                || SecurityContextHolder.getContext().getAuthentication() != null) {
 
             filterChain.doFilter(request, response);
             return;
@@ -48,36 +47,22 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         try {
             String email = jwtService.extractEmail(token);
 
-            boolean notAuthenticated =
-                    SecurityContextHolder
+            /*
+             * O banco continua sendo a fonte da verdade: conta removida ou
+             * papel alterado vale na hora, sem esperar o token expirar.
+             */
+            employeeRepository
+                    .findByEmail(email)
+                    .map(AuthenticatedUser::from)
+                    .ifPresent(user -> SecurityContextHolder
                             .getContext()
-                            .getAuthentication() == null;
-
-            if (notAuthenticated) {
-                Employee employee = employeeRepository
-                        .findByEmail(email)
-                        .orElse(null);
-
-                boolean tokenIsValid =
-                        employee != null
-                                && jwtService.isTokenValid(
-                                token,
-                                employee.getEmail()
-                        );
-
-                if (tokenIsValid) {
-                    UsernamePasswordAuthenticationToken authentication =
-                            new UsernamePasswordAuthenticationToken(
-                                    employee,
-                                    null,
-                                    Collections.emptyList()
-                            );
-
-                    SecurityContextHolder
-                            .getContext()
-                            .setAuthentication(authentication);
-                }
-            }
+                            .setAuthentication(
+                                    new UsernamePasswordAuthenticationToken(
+                                            user,
+                                            null,
+                                            user.authorities()
+                                    )
+                            ));
 
         } catch (JwtException | IllegalArgumentException exception) {
             SecurityContextHolder.clearContext();

@@ -72,7 +72,7 @@ class VacationConcurrencyIntegrationTest {
                 Callable<Boolean> task = () -> {
                     start.await();
                     try {
-                        vacationService.create(request, savedEmployee);
+                        vacationService.create(request, savedEmployee.getId());
                         return true;
                     } catch (InvalidVacationException exception) {
                         return false;

@@ -1,7 +1,10 @@
 package com.JoaoGabriel.vacation_scheduler.config;
 
+import com.JoaoGabriel.vacation_scheduler.auth.LoginRateLimitProperties;
+import com.JoaoGabriel.vacation_scheduler.employee.EmployeeRole;
 import com.JoaoGabriel.vacation_scheduler.security.JwtAuthenticationFilter;
 import lombok.RequiredArgsConstructor;
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
@@ -15,7 +18,11 @@ import jakarta.servlet.http.HttpServletResponse;
 
 @Configuration
 @RequiredArgsConstructor
+@EnableConfigurationProperties(LoginRateLimitProperties.class)
 public class SecurityConfig {
+
+    private static final String MANAGER = EmployeeRole.MANAGER.name();
+    private static final String EMPLOYEE = EmployeeRole.EMPLOYEE.name();
 
     private final JwtAuthenticationFilter jwtAuthenticationFilter;
 
@@ -35,6 +42,14 @@ public class SecurityConfig {
                                     "{\"message\":\"Autenticação necessária\"}"
                             );
                         })
+                        .accessDeniedHandler((request, response, accessDeniedException) -> {
+                            response.setStatus(HttpServletResponse.SC_FORBIDDEN);
+                            response.setContentType("application/json");
+                            response.setCharacterEncoding("UTF-8");
+                            response.getWriter().write(
+                                    "{\"message\":\"Você não tem permissão para esta operação\"}"
+                            );
+                        })
                 )
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers(
@@ -42,6 +57,8 @@ public class SecurityConfig {
                                 "/employees",
                                 "/managers"
                         ).permitAll()
+                        .requestMatchers("/managers/**").hasRole(MANAGER)
+                        .requestMatchers("/vacations/**").hasRole(EMPLOYEE)
                         .anyRequest().authenticated()
                 )
                 .addFilterBefore(

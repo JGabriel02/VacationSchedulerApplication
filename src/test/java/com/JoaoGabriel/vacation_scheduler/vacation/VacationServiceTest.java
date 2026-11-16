@@ -126,7 +126,7 @@ class VacationServiceTest {
         VacationResponse response =
                 vacationService.create(
                         request,
-                        employee
+                        employee.getId()
                 );
 
         assertNotNull(response);
@@ -197,7 +197,7 @@ class VacationServiceTest {
         VacationResponse response =
                 vacationService.create(
                         request,
-                        employee
+                        employee.getId()
                 );
 
         assertEquals(10, response.totalDays());
@@ -221,7 +221,7 @@ class VacationServiceTest {
                         InvalidVacationException.class,
                         () -> vacationService.create(
                                 request,
-                                employee
+                                employee.getId()
                         )
                 );
 
@@ -249,7 +249,7 @@ class VacationServiceTest {
                         InvalidVacationException.class,
                         () -> vacationService.create(
                                 request,
-                                employee
+                                employee.getId()
                         )
                 );
 
@@ -274,7 +274,7 @@ class VacationServiceTest {
                         InvalidVacationException.class,
                         () -> vacationService.create(
                                 request,
-                                employee
+                                employee.getId()
                         )
                 );
 
@@ -297,7 +297,7 @@ class VacationServiceTest {
                         InvalidVacationException.class,
                         () -> vacationService.create(
                                 request,
-                                employee
+                                employee.getId()
                         )
                 );
 
@@ -324,7 +324,7 @@ class VacationServiceTest {
                         InvalidVacationException.class,
                         () -> vacationService.create(
                                 request,
-                                employee
+                                employee.getId()
                         )
                 );
 
@@ -343,12 +343,15 @@ class VacationServiceTest {
                         10
                 );
 
+        when(employeeRepository.findByIdForUpdate(999L))
+                .thenReturn(Optional.empty());
+
         InvalidVacationException exception =
                 assertThrows(
                         InvalidVacationException.class,
                         () -> vacationService.create(
                                 request,
-                                null
+                                999L
                         )
                 );
 
@@ -373,7 +376,7 @@ class VacationServiceTest {
                         InvalidVacationException.class,
                         () -> vacationService.create(
                                 request,
-                                employee
+                                employee.getId()
                         )
                 );
 
@@ -399,7 +402,7 @@ class VacationServiceTest {
                         InvalidVacationException.class,
                         () -> vacationService.create(
                                 request,
-                                employee
+                                employee.getId()
                         )
                 );
 
@@ -440,7 +443,7 @@ class VacationServiceTest {
                         InvalidVacationException.class,
                         () -> vacationService.create(
                                 request,
-                                employee
+                                employee.getId()
                         )
                 );
 
@@ -483,7 +486,7 @@ class VacationServiceTest {
                 InvalidVacationException.class,
                 () -> vacationService.create(
                         request,
-                        employee
+                        employee.getId()
                 )
         );
 
@@ -522,7 +525,7 @@ class VacationServiceTest {
         VacationResponse response =
                 vacationService.create(
                         request,
-                        employee
+                        employee.getId()
                 );
 
         assertNotNull(response);
@@ -562,7 +565,7 @@ class VacationServiceTest {
                         InvalidVacationException.class,
                         () -> vacationService.create(
                                 request,
-                                employee
+                                employee.getId()
                         )
                 );
 
@@ -605,7 +608,7 @@ class VacationServiceTest {
                 InvalidVacationException.class,
                 () -> vacationService.create(
                         request,
-                        employee
+                        employee.getId()
                 )
         );
     }
@@ -639,7 +642,7 @@ class VacationServiceTest {
         VacationResponse response =
                 vacationService.create(
                         request,
-                        employee
+                        employee.getId()
                 );
 
         assertEquals(30, response.totalDays());
@@ -674,7 +677,7 @@ class VacationServiceTest {
                         InvalidVacationException.class,
                         () -> vacationService.create(
                                 request,
-                                employee
+                                employee.getId()
                         )
                 );
 
@@ -718,7 +721,7 @@ class VacationServiceTest {
         VacationResponse response =
                 vacationService.create(
                         request,
-                        employee
+                        employee.getId()
                 );
 
         assertEquals(20, response.totalDays());
@@ -761,7 +764,7 @@ class VacationServiceTest {
         VacationResponse response =
                 vacationService.create(
                         request,
-                        employee
+                        employee.getId()
                 );
 
         assertEquals(10, response.totalDays());
@@ -806,7 +809,7 @@ class VacationServiceTest {
 
         List<VacationResponse> responses =
                 vacationService.findByEmployee(
-                        employee
+                        employee.getId()
                 );
 
         assertEquals(2, responses.size());
@@ -843,7 +846,7 @@ class VacationServiceTest {
 
         vacationService.cancel(
                 vacation.getId(),
-                employee
+                employee.getId()
         );
 
         assertEquals(
@@ -879,7 +882,7 @@ class VacationServiceTest {
                         InvalidVacationException.class,
                         () -> vacationService.cancel(
                                 vacation.getId(),
-                                employee
+                                employee.getId()
                         )
                 );
 
@@ -914,7 +917,7 @@ class VacationServiceTest {
                 InvalidVacationException.class,
                 () -> vacationService.cancel(
                         vacation.getId(),
-                        employee
+                        employee.getId()
                 )
         );
     }
@@ -948,7 +951,7 @@ class VacationServiceTest {
         VacationResponse response =
                 vacationService.create(
                         request,
-                        employee
+                        employee.getId()
                 );
 
         assertEquals(30, response.totalDays());
@@ -978,7 +981,7 @@ class VacationServiceTest {
                         InvalidVacationException.class,
                         () -> vacationService.cancel(
                                 vacation.getId(),
-                                employee
+                                employee.getId()
                         )
                 );
 
@@ -1016,7 +1019,7 @@ class VacationServiceTest {
                 InvalidVacationException.class,
                 () -> vacationService.cancel(
                         vacation.getId(),
-                        employee
+                        employee.getId()
                 )
         );
 
@@ -1041,7 +1044,7 @@ class VacationServiceTest {
                         InvalidVacationException.class,
                         () -> vacationService.cancel(
                                 99L,
-                                employee
+                                employee.getId()
                         )
                 );
 

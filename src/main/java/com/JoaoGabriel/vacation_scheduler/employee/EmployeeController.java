@@ -2,10 +2,11 @@ package com.JoaoGabriel.vacation_scheduler.employee;
 
 import com.JoaoGabriel.vacation_scheduler.employee.dto.EmployeeRequest;
 import com.JoaoGabriel.vacation_scheduler.employee.dto.EmployeeResponse;
+import com.JoaoGabriel.vacation_scheduler.security.AuthenticatedUser;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
-import org.springframework.security.core.Authentication;
 
 @RestController
 @RequestMapping("/employees")
@@ -20,14 +21,11 @@ public class EmployeeController {
     }
 
     @GetMapping("/me")
-    public EmployeeResponse me(Authentication authentication) {
-
-        Employee employee = (Employee) authentication.getPrincipal();
-
+    public EmployeeResponse me(@AuthenticationPrincipal AuthenticatedUser user) {
         return new EmployeeResponse(
-                employee.getId(),
-                employee.getNome(),
-                employee.getEmail()
+                user.id(),
+                user.nome(),
+                user.email()
         );
     }
 }

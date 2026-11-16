@@ -25,22 +25,22 @@ public class VacationService {
     @Transactional
     public VacationResponse create(
             VacationRequest request,
-            Employee employee
+            Long employeeId
     ) {
-        validateEmployee(employee);
-        validateHasApprover(employee);
-        validateDates(request);
-
         /*
          * Trava a linha do funcionário até o fim da transação. Sem isso, duas
          * solicitações simultâneas leem o mesmo saldo e ambas passam no limite
          * de 30 dias.
          */
-        Employee lockedEmployee = employeeRepository
-                .findByIdForUpdate(employee.getId())
+        Employee employee = employeeRepository
+                .findByIdForUpdate(employeeId)
                 .orElseThrow(() -> new InvalidVacationException(
                         "Funcionário autenticado não encontrado"
                 ));
+
+        validateEmployee(employee);
+        validateHasApprover(employee);
+        validateDates(request);
 
         LocalDate eligibilityDate =
                 employee.getAdmissionDate().plusYears(1);
@@ -128,7 +128,7 @@ public class VacationService {
         vacation.setStartDate(request.startDate());
         vacation.setEndDate(request.endDate());
         vacation.setTotalDays(totalDays);
-        vacation.setEmployee(lockedEmployee);
+        vacation.setEmployee(employee);
         vacation.setApprovalStatus(
                 VacationApprovalStatus.PENDING
         );
@@ -141,13 +141,11 @@ public class VacationService {
 
     @Transactional(readOnly = true)
     public List<VacationResponse> findByEmployee(
-            Employee employee
+            Long employeeId
     ) {
-        validateEmployee(employee);
-
         return vacationRepository
                 .findByEmployeeIdAndArchivedFalseOrderByStartDateAsc(
-                        employee.getId()
+                        employeeId
                 )
                 .stream()
                 .map(this::toResponse)
@@ -161,14 +159,12 @@ public class VacationService {
     @Transactional
     public void cancel(
             Long vacationId,
-            Employee employee
+            Long employeeId
     ) {
-        validateEmployee(employee);
-
         Vacation vacation = vacationRepository
                 .findByIdAndEmployeeId(
                         vacationId,
-                        employee.getId()
+                        employeeId
                 )
                 .orElseThrow(() ->
                         new InvalidVacationException(
@@ -206,12 +202,6 @@ public class VacationService {
     private void validateEmployee(
             Employee employee
     ) {
-        if (employee == null) {
-            throw new InvalidVacationException(
-                    "Funcionário autenticado não encontrado"
-            );
-        }
-
         if (employee.getAdmissionDate() == null) {
             throw new InvalidVacationException(
                     "A data de admissão do funcionário não foi informada"

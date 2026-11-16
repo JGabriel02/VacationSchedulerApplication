@@ -2,16 +2,22 @@ package com.JoaoGabriel.vacation_scheduler.employee;
 
 import com.JoaoGabriel.vacation_scheduler.employee.dto.ManagerRequest;
 import com.JoaoGabriel.vacation_scheduler.employee.dto.ManagerResponse;
+import com.JoaoGabriel.vacation_scheduler.security.AuthenticatedUser;
 import com.JoaoGabriel.vacation_scheduler.vacation.dto.VacationResponse;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.security.core.Authentication;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 
+/*
+ * POST /managers é público de propósito: o gestor se cadastra e repassa o
+ * código gerado para a equipe. As demais rotas exigem ROLE_MANAGER
+ * (ver SecurityConfig).
+ */
 @RestController
 @RequestMapping("/managers")
 @RequiredArgsConstructor
@@ -33,67 +39,25 @@ public class ManagerController {
     }
 
     @GetMapping("/vacations")
-    public ResponseEntity<List<VacationResponse>>
-    listEmployeeVacations(
-            Authentication authentication
+    public List<VacationResponse> listEmployeeVacations(
+            @AuthenticationPrincipal AuthenticatedUser manager
     ) {
-        Employee authenticatedEmployee =
-                getAuthenticatedEmployee(authentication);
-
-        List<VacationResponse> vacations =
-                managerService.listEmployeeVacations(
-                        authenticatedEmployee
-                );
-
-        return ResponseEntity.ok(vacations);
+        return managerService.listEmployeeVacations(manager.id());
     }
 
     @PatchMapping("/vacations/{id}/approve")
-    public ResponseEntity<VacationResponse>
-    approveVacation(
+    public VacationResponse approveVacation(
             @PathVariable Long id,
-            Authentication authentication
+            @AuthenticationPrincipal AuthenticatedUser manager
     ) {
-        Employee authenticatedEmployee =
-                getAuthenticatedEmployee(authentication);
-
-        VacationResponse response =
-                managerService.approveVacation(
-                        id,
-                        authenticatedEmployee
-                );
-
-        return ResponseEntity.ok(response);
+        return managerService.approveVacation(id, manager.id());
     }
 
     @PatchMapping("/vacations/{id}/reject")
-    public ResponseEntity<VacationResponse>
-    rejectVacation(
+    public VacationResponse rejectVacation(
             @PathVariable Long id,
-            Authentication authentication
+            @AuthenticationPrincipal AuthenticatedUser manager
     ) {
-        Employee authenticatedEmployee =
-                getAuthenticatedEmployee(authentication);
-
-        VacationResponse response =
-                managerService.rejectVacation(
-                        id,
-                        authenticatedEmployee
-                );
-
-        return ResponseEntity.ok(response);
-    }
-
-    private Employee getAuthenticatedEmployee(
-            Authentication authentication
-    ) {
-        if (authentication == null
-                || !(authentication.getPrincipal()
-                instanceof Employee employee)) {
-
-            return null;
-        }
-
-        return employee;
+        return managerService.rejectVacation(id, manager.id());
     }
 }

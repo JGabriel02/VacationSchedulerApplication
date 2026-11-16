@@ -1,6 +1,8 @@
 package com.JoaoGabriel.vacation_scheduler.security;
 
+import com.JoaoGabriel.vacation_scheduler.employee.EmployeeRole;
 import io.jsonwebtoken.Claims;
+import io.jsonwebtoken.JwtException;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.io.Decoders;
 import io.jsonwebtoken.security.Keys;
@@ -13,51 +15,52 @@ import java.util.Date;
 @Service
 public class JwtService {
 
-    @Value("${jwt.secret}")
-    private String secret;
+    static final String ROLE_CLAIM = "role";
 
-    @Value("${jwt.expiration}")
-    private long expiration;
+    private final SecretKey signingKey;
+    private final long expiration;
 
-    public String generateToken(String email) {
+    public JwtService(
+            @Value("${jwt.secret}") String secret,
+            @Value("${jwt.expiration}") long expiration
+    ) {
+        this.signingKey = Keys.hmacShaKeyFor(Decoders.BASE64.decode(secret));
+        this.expiration = expiration;
+    }
+
+    public String generateToken(String email, EmployeeRole role) {
         Date now = new Date();
         Date expirationDate = new Date(now.getTime() + expiration);
 
         return Jwts.builder()
                 .subject(email)
+                .claim(ROLE_CLAIM, role.name())
                 .issuedAt(now)
                 .expiration(expirationDate)
-                .signWith(getSigningKey())
+                .signWith(signingKey)
                 .compact();
     }
 
+    /*
+     * Valida assinatura e expiração em um único parse. O jjwt já lança
+     * ExpiredJwtException (subclasse de JwtException) para tokens vencidos,
+     * então não é preciso checar a data manualmente.
+     */
     public String extractEmail(String token) {
-        return extractClaims(token).getSubject();
+        String email = parse(token).getSubject();
+
+        if (email == null || email.isBlank()) {
+            throw new JwtException("Token sem subject");
+        }
+
+        return email;
     }
 
-    public boolean isTokenValid(String token, String email) {
-        String tokenEmail = extractEmail(token);
-
-        return tokenEmail.equals(email) && !isTokenExpired(token);
-    }
-
-    private boolean isTokenExpired(String token) {
-        Date expirationDate = extractClaims(token).getExpiration();
-
-        return expirationDate.before(new Date());
-    }
-
-    private Claims extractClaims(String token) {
+    Claims parse(String token) {
         return Jwts.parser()
-                .verifyWith(getSigningKey())
+                .verifyWith(signingKey)
                 .build()
                 .parseSignedClaims(token)
                 .getPayload();
-    }
-
-    private SecretKey getSigningKey() {
-        byte[] keyBytes = Decoders.BASE64.decode(secret);
-
-        return Keys.hmacShaKeyFor(keyBytes);
     }
 }
